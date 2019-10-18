@@ -104,11 +104,7 @@ pub struct SrcCursor {
 }
 impl SrcCursor {
     pub fn new() -> Self {
-        Self {
-            column: 0,
-            idx: 0,
-            line: 0,
-        }
+        Self { column: 0, idx: 0, line: 0 }
     }
     pub fn consume_n(&mut self, n: usize) {
         self.idx += n;

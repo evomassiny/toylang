@@ -92,6 +92,8 @@ pub enum BinaryOp {
     Comparison(ComparisonOp),
     /// Logical operation
     Logical(LogicalOp),
+    /// Assignation
+    Assign,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -118,17 +120,14 @@ pub enum FlatExp {
     /// consumes 2 or 3 expression => the condition, the 'true' block, the 'false' block
     FlatIf(usize),
     /// Create a function with the given name, arguments, and expression
-    /// consumes `n` expressions (with n >= 1) => each argument, the function block
-    FlatFunctionDecl(usize),
+    /// consumes 1 expression (its block)
+    FlatFunctionDecl(String, Vec<String>),
     /// Return the expression from a function
-    /// consumes 1 expression
-    FlatReturn,
-    /// Assign an expression to a value
-    /// consumes 2 expression
-    FlatAssign,
+    /// consumes 0 or 1 expression, depending on either or not it returns something
+    FlatReturn(usize),
     /// Let declaraton
-    /// consumes 2 expression
-    FlatLetDecl,
+    /// consumes 1 expression
+    FlatLetDecl(String),
     /// a single statement (i.e a line followed by an `;`)
     /// consumes 1 expression
     FlatStatement,
