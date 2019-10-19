@@ -4,10 +4,6 @@ use crate::patterns;
 use crate::tokens::{
     TokenKind,
     Token,
-    LiteralKind,
-    SeparatorKind,
-    OperatorKind,
-    KeywordKind,
     SrcCursor
 };
 
@@ -41,6 +37,8 @@ pub enum Const {
     Num(f64),
     /// A boolean
     Bool(bool),
+    /// A string
+    Str(String),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -116,6 +114,8 @@ pub enum FlatExp {
     /// Repeatedly run an expression while the conditional expression resolves to true
     /// consumes 2 expressions => the condition, the block
     FlatWhileLoop,
+    /// Load a value from a reference (eg a variable name)
+    FlatLocal(String),
     /// Check if a conditional expression is true and run an expression if it is and another expression if it isn't
     /// consumes 2 or 3 expression => the condition, the 'true' block, the 'false' block
     FlatIf(usize),
@@ -136,7 +136,14 @@ pub enum FlatExp {
 pub fn parse_flat_expressions(tokens: &[Token]) -> Result<Vec<FlatExp>, ParsingError> {
     let mut exprs: Vec<FlatExp> = Vec::new();
     // in this vector, a None item represent a parsed Token
-    let mut unparsed_tokens: Vec<Option<&Token>> = tokens.iter().map(|t| Some(t)).collect();
+    let mut unparsed_tokens: Vec<Option<&Token>> = tokens.iter()
+        .filter(|t|  // weed out comments
+            match t { 
+                &Token { kind: TokenKind::Comment(_), .. } => false,
+                _ => true,
+            })
+        .map(|t| Some(t)) // as Option<&Token>
+        .collect();
     let mut idx: usize = 0;
     while idx < unparsed_tokens.len() {
         // pass parsed tokens
@@ -145,7 +152,7 @@ pub fn parse_flat_expressions(tokens: &[Token]) -> Result<Vec<FlatExp>, ParsingE
             continue;
         }
 
-        // match expresions patterns
+        // match expresions patterns, order matters.
         let (flat_exp, parsed_tokens) =
                  if let Some(exp) = patterns::match_block(&unparsed_tokens[idx..]) { exp }
             else if let Some(exp) = patterns::match_function_declaration(&unparsed_tokens[idx..]) { exp }
@@ -154,26 +161,36 @@ pub fn parse_flat_expressions(tokens: &[Token]) -> Result<Vec<FlatExp>, ParsingE
             else if let Some(exp) = patterns::match_return(&unparsed_tokens[idx..]) { exp }
             else if let Some(exp) = patterns::match_function_call(&unparsed_tokens[idx..]) { exp }
             else if let Some(exp) = patterns::match_semi_colomn_fenced(&unparsed_tokens[idx..]) { exp }
-            else if let Some(exp) = patterns::match_parenthesis_fenced(&unparsed_tokens[idx..]) { exp }
             else if let Some(exp) = patterns::match_binary_op(&unparsed_tokens[idx..]) { exp }
+            else if let Some(exp) = patterns::match_parenthesis_fenced(&unparsed_tokens[idx..]) { exp }
             else if let Some(exp) = patterns::match_unary_op(&unparsed_tokens[idx..]) { exp }
             else if let Some(exp) = patterns::match_const(&unparsed_tokens[idx..]) { exp }
+            else if let Some(exp) = patterns::match_local(&unparsed_tokens[idx..]) { exp }
             else { 
-                return Err(ParsingError::new("could not parse token".into()));
+                match &unparsed_tokens[idx] {
+                    Some(Token { cursor, .. }) => {
+                        return Err(ParsingError::new(
+                            format!(
+                                "could not parse expression at line {}, column {}", 
+                                cursor.line + 1,
+                                cursor.column + 1,
+                            )
+                        ));
+                    },
+                    None => return Err(ParsingError::new("unexpected end".into())),
+               }
             };
 
         // store parsed expression into a flat tree
         match flat_exp {
-            FlatFenced => {}, // ignore thoses, they just separators between expressions
+            FlatExp::FlatFenced => {}, // ignore thoses, they are just separators between expressions
             _ => exprs.push(flat_exp),
         }
-        
         // consume parsed tokens
         for i in parsed_tokens {
             unparsed_tokens[idx + i] = None;
         }
     }
-
     Ok(exprs)
 }
 

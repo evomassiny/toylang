@@ -1,12 +1,20 @@
 use crate::parser::{
     FlatExp,
     FlatExp::*,
+    Const,
+    UnaryOp,
+    BinaryOp,
+    BinaryOp::*,
+    ComparisonOp,
+    LogicalOp,
+    NumericalOp,
 };
 use crate::tokens::{
     TokenKind::*,
     Token,
     LiteralKind::*,
     SeparatorKind::*,
+    OperatorKind,
     OperatorKind::*,
     KeywordKind::*,
     SrcCursor
@@ -78,16 +86,182 @@ pub fn match_parenthesis_fenced(tokens: &[Option<&Token>]) -> Option<(FlatExp, V
     }
     None
 }
+
+/// Match at any place in the current expression:
+
+/// Match at any place in the current expression:
+/// * `expr == expr` 
+/// * `expr != expr` 
+/// * `expr >= expr` 
+/// * `expr <= expr` 
+/// * `expr > expr` 
+/// * `expr < expr` 
+/// * `expr + expr` 
+/// * `expr - expr` 
+/// * `expr & expr` 
+/// * `expr | expr` 
+/// * `expr * expr` 
+/// * `expr / expr` 
+/// * `expr ** expr` 
+/// * `expr % expr` 
+/// (in this order of priority)
+/// Unless they are in between paranthesis
 pub fn match_binary_op(tokens: &[Option<&Token>]) -> Option<(FlatExp, Vec<usize>)> {
-    // todo
+    if tokens.len() < 3 { return None; }
+    // the operator token must be at least the index 1
+    // which ensure that we don't match unary operation
+    const START_IDX: usize = 1; 
+    // parse assignation
+    for i in 0..tokens.len() {
+        match tokens[i] {
+            Some(Token { kind: Operator(OperatorKind::Assign), .. }) => {
+                return Some((FlatBinaryOp(BinaryOp::Assign), vec![i]));
+            },
+            None => return None,
+            _ => continue,
+        }
+    }
+    // parse comparison operations
+    let mut paren_count = 0;
+    for i in 0..tokens.len() {
+        match tokens[i] {
+            Some(Token { kind: Separator(OpenParen), .. }) => paren_count += 1,
+            Some(Token { kind: Separator(CloseParen), .. }) => paren_count -= 1,
+            Some(Token { kind: Operator(operator), .. }) => {
+                if paren_count == 0 && i >= START_IDX {
+                    match operator {
+                        Equal => return Some((FlatBinaryOp(Comparison(ComparisonOp::Equal)), vec![i])),
+                        NotEq => return Some((FlatBinaryOp(Comparison(ComparisonOp::NotEqual)), vec![i])),
+                        GreaterThan => return Some((FlatBinaryOp(Comparison(ComparisonOp::GreaterThan)), vec![i])),
+                        GreaterThanOrEq => return Some((FlatBinaryOp(Comparison(ComparisonOp::GreaterThanOrEqual)), vec![i])),
+                        LessThan => return Some((FlatBinaryOp(Comparison(ComparisonOp::LessThan)), vec![i])),
+                        LessThanOrEq => return Some((FlatBinaryOp(Comparison(ComparisonOp::LessThanOrEqual)), vec![i])),
+                        _ => continue,
+                    }
+                }
+            },
+            None => return None,
+            _ => continue,
+        }
+    }
+    // parse low priority arithmetic operation (+, -)
+    paren_count = 0;
+    for i in 0..tokens.len() {
+        match tokens[i] {
+            Some(Token { kind: Separator(OpenParen), .. }) => paren_count += 1,
+            Some(Token { kind: Separator(CloseParen), .. }) => paren_count -= 1,
+            Some(Token { kind: Operator(operator), .. }) => {
+                if paren_count == 0 && i >= START_IDX {
+                    match operator {
+                        Add => return Some((FlatBinaryOp(Numerical(NumericalOp::Add)), vec![i])),
+                        Sub => return Some((FlatBinaryOp(Numerical(NumericalOp::Sub)), vec![i])),
+                        _ => continue,
+                    }
+                }
+            },
+            None => break,
+            _ => continue,
+        }
+    }
+    // parse logical operation (|, &)
+    paren_count = 0;
+    for i in 0..tokens.len() {
+        match tokens[i] {
+            Some(Token { kind: Separator(OpenParen), .. }) => paren_count += 1,
+            Some(Token { kind: Separator(CloseParen), .. }) => paren_count -= 1,
+            Some(Token { kind: Operator(operator), .. }) => {
+                if paren_count == 0 && i >= START_IDX {
+                    match operator {
+                        And => return Some((FlatBinaryOp(Logical(LogicalOp::And)), vec![i])),
+                        Or => return Some((FlatBinaryOp(Logical(LogicalOp::Or)), vec![i])),
+                        _ => continue,
+                    }
+                }
+            },
+            None => break,
+            _ => continue,
+        }
+    }
+    // parse medium priority arithmetic operation (*, /, %)
+    paren_count = 0;
+    for i in 0..tokens.len() {
+        match tokens[i] {
+            Some(Token { kind: Separator(OpenParen), .. }) => paren_count += 1,
+            Some(Token { kind: Separator(CloseParen), .. }) => paren_count -= 1,
+            Some(Token { kind: Operator(operator), .. }) => {
+                if paren_count == 0 && i >= START_IDX {
+                    match operator {
+                        Mul => return Some((FlatBinaryOp(Numerical(NumericalOp::Mul)), vec![i])),
+                        Div => return Some((FlatBinaryOp(Numerical(NumericalOp::Div)), vec![i])),
+                        Mod => return Some((FlatBinaryOp(Numerical(NumericalOp::Mod)), vec![i])),
+                        _ => continue,
+                    }
+                }
+            },
+            None => break,
+            _ => continue,
+        }
+    }
+    // parse high priority arithmetic operation (**)
+    paren_count = 0;
+    for i in 0..tokens.len() {
+        match tokens[i] {
+            Some(Token { kind: Separator(OpenParen), .. }) => paren_count += 1,
+            Some(Token { kind: Separator(CloseParen), .. }) => paren_count -= 1,
+            Some(Token { kind: Operator(operator), .. }) => {
+                if paren_count == 0 && i >= START_IDX {
+                    match operator {
+                        Pow => return Some((FlatBinaryOp(Numerical(NumericalOp::Pow)), vec![i])),
+                        _ => continue,
+                    }
+                }
+            },
+            None => break,
+            _ => continue,
+        }
+    }
     None
 }
+
+/// Match from the first item of `token`:
+/// * `-` followed by any token 
+/// * `+` followed by any token 
+/// * `!` followed by any token 
 pub fn match_unary_op(tokens: &[Option<&Token>]) -> Option<(FlatExp, Vec<usize>)> {
-    // todo
+    if tokens.len() < 2 || tokens[1].is_none() {
+        return None; 
+    }
+    return match tokens[0] {
+        Some(&Token { kind: Operator(Add), ..}) => Some((FlatUnaryOp(UnaryOp::Plus), vec![0])),
+        Some(&Token { kind: Operator(Sub), ..}) => Some((FlatUnaryOp(UnaryOp::Minus), vec![0])),
+        Some(&Token { kind: Operator(Not), ..}) => Some((FlatUnaryOp(UnaryOp::Not), vec![0])),
+        _ => None,
+    };
+}
+
+/// Match a number, a quoted string or a boolean litteral at the first itme of `token`
+/// Match from the first item of `token`:
+/// * A string litteral
+/// * A number 
+/// * A bollean litteral
+pub fn match_const(tokens: &[Option<&Token>]) -> Option<(FlatExp, Vec<usize>)> {
+    if tokens.len() < 1 { return None; }
+    if let Some(Token { kind: Literal(literal), ..} ) = tokens[0] {
+        match literal {
+            Boolean(value) => return Some((FlatConst(Const::Bool(*value)),vec![0])),
+            Numeric(value) => return Some((FlatConst(Const::Num(*value)), vec![0])),
+            Str(value) => return Some((FlatConst(Const::Str(value.into())), vec![0])),
+        }
+    }
     None
 }
-pub fn match_const(tokens: &[Option<&Token>]) -> Option<(FlatExp, Vec<usize>)> {
-    // todo
+
+/// Match a local label, eg: a variable name
+pub fn match_local(tokens: &[Option<&Token>]) -> Option<(FlatExp, Vec<usize>)> {
+    if tokens.len() < 1 { return None; }
+    if let Some(Token { kind: Identifier(ref id), ..} ) = tokens[0] {
+        return Some((FlatLocal(id.into()), vec![0]));
+    }
     None
 }
 
@@ -347,7 +521,7 @@ pub fn match_let(tokens: &[Option<&Token>]) -> Option<(FlatExp, Vec<usize>)> {
     }
     // match `=`
     match tokens[2] {
-        Some(&Token { kind: Operator(Assign), ..}) => {},
+        Some(&Token { kind: Operator(OperatorKind::Assign), ..}) => {},
         _ => return None,
     }
     Some((FlatLetDecl(name), vec![0, 1, 2]))
@@ -365,7 +539,16 @@ mod test {
         SrcCursor
     };
     use crate::lexer::lex;
-    use crate::parser::FlatExp;
+    use crate::parser::{
+        FlatExp,
+        Const,
+        UnaryOp,
+        BinaryOp,
+        BinaryOp::*,
+        ComparisonOp,
+        NumericalOp,
+        LogicalOp,
+    };
 
     #[test]
     fn match_block_pattern() {
@@ -617,6 +800,143 @@ mod test {
             patterns::match_parenthesis_fenced(&unparsed_tokens),
             None,
             "should ignore unclosed parenthesis "
+        );
+    }
+
+    #[test]
+    fn match_const_pattern() {
+        let tokens = lex("1").unwrap();
+        let unparsed_tokens: Vec<Option<&Token>> = tokens.iter().map(|t| Some(t)).collect();
+        assert_eq!(
+            patterns::match_const(&unparsed_tokens),
+            Some((
+                FlatExp::FlatConst(Const::Num(1.)),
+                vec![0]
+            )),
+            "Failed to match const literal"
+        );
+        let tokens = lex("true").unwrap();
+        let unparsed_tokens: Vec<Option<&Token>> = tokens.iter().map(|t| Some(t)).collect();
+        assert_eq!(
+            patterns::match_const(&unparsed_tokens),
+            Some((
+                FlatExp::FlatConst(Const::Bool(true)),
+                vec![0]
+            )),
+            "Failed to match const literal"
+        );
+        let tokens = lex(r#""bim""#).unwrap();
+        let unparsed_tokens: Vec<Option<&Token>> = tokens.iter().map(|t| Some(t)).collect();
+        assert_eq!(
+            patterns::match_const(&unparsed_tokens),
+            Some((
+                FlatExp::FlatConst(Const::Str("bim".into())),
+                vec![0]
+            )),
+            "Failed to match const literal"
+        );
+    }
+
+    #[test]
+    fn match_unary_op_pattern() {
+        let tokens = lex("-1").unwrap();
+        let unparsed_tokens: Vec<Option<&Token>> = tokens.iter().map(|t| Some(t)).collect();
+        assert_eq!(
+            patterns::match_unary_op(&unparsed_tokens),
+            Some((
+                FlatExp::FlatUnaryOp(UnaryOp::Minus),
+                vec![0]
+            )),
+            "Failed to match unary operation"
+        );
+        let tokens = lex("+1").unwrap();
+        let unparsed_tokens: Vec<Option<&Token>> = tokens.iter().map(|t| Some(t)).collect();
+        assert_eq!(
+            patterns::match_unary_op(&unparsed_tokens),
+            Some((
+                FlatExp::FlatUnaryOp(UnaryOp::Plus),
+                vec![0]
+            )),
+            "Failed to match unary operation"
+        );
+        let tokens = lex("!foo").unwrap();
+        let unparsed_tokens: Vec<Option<&Token>> = tokens.iter().map(|t| Some(t)).collect();
+        assert_eq!(
+            patterns::match_unary_op(&unparsed_tokens),
+            Some((
+                FlatExp::FlatUnaryOp(UnaryOp::Not),
+                vec![0]
+            )),
+            "Failed to match unary operation"
+        );
+    }
+
+    #[test]
+    fn match_binary_op_pattern() {
+        let tokens = lex("1-1").unwrap();
+        let unparsed_tokens: Vec<Option<&Token>> = tokens.iter().map(|t| Some(t)).collect();
+        assert_eq!(
+            patterns::match_binary_op(&unparsed_tokens),
+            Some((
+                FlatExp::FlatBinaryOp(Numerical(NumericalOp::Sub)),
+                vec![1]
+            )),
+            "Failed to match binary operation"
+        );
+
+        let tokens = lex("1-1 * 1").unwrap();
+        let unparsed_tokens: Vec<Option<&Token>> = tokens.iter().map(|t| Some(t)).collect();
+        assert_eq!(
+            patterns::match_binary_op(&unparsed_tokens),
+            Some((
+                FlatExp::FlatBinaryOp(Numerical(NumericalOp::Sub)),
+                vec![1]
+            )),
+            "Failed to match binary operation"
+        );
+
+        let tokens = lex("(1-1 * 1) % 1").unwrap();
+        let unparsed_tokens: Vec<Option<&Token>> = tokens.iter().map(|t| Some(t)).collect();
+        assert_eq!(
+            patterns::match_binary_op(&unparsed_tokens),
+            Some((
+                FlatExp::FlatBinaryOp(Numerical(NumericalOp::Mod)),
+                vec![7]
+            )),
+            "Failed to match binary operation"
+        );
+
+        let tokens = lex("-1").unwrap();
+        let unparsed_tokens: Vec<Option<&Token>> = tokens.iter().map(|t| Some(t)).collect();
+        assert_eq!(
+            patterns::match_binary_op(&unparsed_tokens),
+            None,
+            "this is not a binary operation"
+        );
+
+        let tokens = lex("a | (1-1)").unwrap();
+        let unparsed_tokens: Vec<Option<&Token>> = tokens.iter().map(|t| Some(t)).collect();
+        assert_eq!(
+            patterns::match_binary_op(&unparsed_tokens),
+            Some((
+                FlatExp::FlatBinaryOp(Logical(LogicalOp::Or)),
+                vec![1]
+            )),
+            "Failed to match binary operation"
+        );
+    }
+
+    #[test]
+    fn match_local_pattern() {
+        let tokens = lex("a").unwrap();
+        let unparsed_tokens: Vec<Option<&Token>> = tokens.iter().map(|t| Some(t)).collect();
+        assert_eq!(
+            patterns::match_local(&unparsed_tokens),
+            Some((
+                FlatExp::FlatLocal("a".into()),
+                vec![0]
+            )),
+            "Failed to match local"
         );
     }
 }

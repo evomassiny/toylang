@@ -74,7 +74,10 @@ pub fn lex(src: &str) -> Result<Vec<Token>, Box<dyn Error>> {
         ).unwrap();
         static ref OPERATOR_PATTERN: Regex = Regex::new(
             // 2chars tokens must come first
-            r"^(?P<token>==|>=|<=|\\!=|\*\*|\+|&|=|/|>|<|%|\*|\\!|\||\-)"
+            r"^(?P<token>==|>=|<=|!=|\*\*|\+|&|=|/|>|<|%|\*|!|\||\-)"
+        ).unwrap();
+        static ref STRING_LITERAL_PATTERN: Regex = Regex::new(
+            r#"^"(?P<token>(\\"|.)*?)""#
         ).unwrap();
         static ref COMMENT_PATTERN: Regex = Regex::new(
             // use `(?m)` to match until \n
@@ -105,6 +108,19 @@ pub fn lex(src: &str) -> Result<Vec<Token>, Box<dyn Error>> {
         if let Some(caps) = WHITE_SPACE_PATTERN.captures(remaining_src) {
             let value = caps.name("token").unwrap().as_str();
             cursor.consume_n(value.len());
+            continue 'token_loop;
+        }
+        // match string literals
+        if let Some(caps) = STRING_LITERAL_PATTERN.captures(remaining_src) {
+            let value_str = caps.name("token").unwrap().as_str();
+            tokens.push(
+                Token::new(
+                    Literal(Str(value_str.into())),
+                    &cursor
+                )
+            );
+            //consume the matched group AND the 2 `"` chars
+            cursor.consume_n(value_str.len() + 2);
             continue 'token_loop;
         }
         // match boolean literals
@@ -170,7 +186,7 @@ pub fn lex(src: &str) -> Result<Vec<Token>, Box<dyn Error>> {
                     );
                 },
             };
-            tokens.push( Token::new(Separator(kind), &cursor));
+            tokens.push(Token::new(Separator(kind), &cursor));
             cursor.consume_n(separator_str.len());
             continue 'token_loop;
         }
@@ -253,7 +269,6 @@ mod test {
 
     #[test]
     fn lex_literals() {
-
         // boolean
         let r = lex("true").unwrap();
         assert_eq!(r[0].kind, Literal(Boolean(true)));
@@ -276,6 +291,15 @@ mod test {
         assert!(r.is_err());
         // don't overlap with other patterns
         let r = lex("1bim");
+        assert!(r.is_err());
+        
+        // String litterals
+        let r = lex(r#" "true" "#).unwrap();
+        assert_eq!(r[0].kind, Literal(Str("true".into())));
+        // test escaped content
+        let r = lex(r#" "\"escaped\"" "#).unwrap();
+        assert_eq!(r[0].kind, Literal(Str(r#"\"escaped\""#.into())));
+        let r = lex(r#" \"str" "#);
         assert!(r.is_err());
     }
 
@@ -309,6 +333,8 @@ mod test {
         assert_eq!(r[0].kind, Operator(Assign));
         let r = lex("+").unwrap();
         assert_eq!(r[0].kind, Operator(Add));
+        let r = lex("!").unwrap();
+        assert_eq!(r[0].kind, Operator(Not));
     }
 
     #[test]

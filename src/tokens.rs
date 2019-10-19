@@ -72,6 +72,8 @@ pub enum OperatorKind {
 /// Literals
 #[derive(PartialEq, Clone, Debug)]
 pub enum LiteralKind {
+    /// any quoted string
+    Str(String),
     /// int or float
     Numeric(f64),
     /// boolean `true` or `false`
