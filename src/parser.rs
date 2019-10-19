@@ -15,7 +15,7 @@ pub struct ParsingError {
 }
 
 impl ParsingError {
-    fn new(msg: String) -> Self {
+    pub fn new(msg: String) -> Self {
         Self { msg: msg }
     }
 }
@@ -29,6 +29,7 @@ impl fmt::Debug for ParsingError {
         write!(f, "{}", self.msg,)
     }
 }
+impl Error for ParsingError {}
 
 #[derive(Clone, Debug, PartialEq)]
 /// const expression

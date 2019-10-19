@@ -1,0 +1,11 @@
+function foo(a, b) {
+    if (a > b) {
+        retrun a + b;
+    }
+    retrun n;
+}
+
+let i = 0;
+while ((i < 12) &&  true) {
+    foo(i, i* 25);
+}

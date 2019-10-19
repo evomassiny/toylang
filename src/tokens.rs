@@ -4,7 +4,7 @@
 pub enum KeywordKind {
     /// The `else` keyword
     Else,
-    /// The `fn` keyword
+    /// The `function` keyword
     Function,
     /// The `if` keyword
     If,
@@ -38,7 +38,7 @@ pub enum SeparatorKind {
 pub enum OperatorKind {
     /// `+`
     Add,
-    /// `&`
+    /// `&&`
     And,
     /// `=`
     Assign,
@@ -62,7 +62,7 @@ pub enum OperatorKind {
     Not,
     /// `!=`
     NotEq,
-    /// `|`
+    /// `||`
     Or,
     /// `**`
     Pow,

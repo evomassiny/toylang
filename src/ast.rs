@@ -1,3 +1,5 @@
+use std::error::Error;
+use crate::lexer::lex;
 use crate::parser::{
     FlatExp,
     FlatExp::*,
@@ -8,7 +10,10 @@ use crate::parser::{
     ComparisonOp,
     LogicalOp,
     NumericalOp,
+    parse_flat_expressions,
+    ParsingError,
 };
+use crate::tokens::Token;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Expr {
@@ -41,87 +46,130 @@ pub enum Expr {
     LetDecl(String, Box<Expr>),
 }
 
+#[derive(Debug)]
 pub struct Ast {
     pub root: Expr,
 }
 impl Ast {
     
+    /// Consumes each FlatExp of `flat_exps` to build a Abstract Syntax Tree from it.
     pub fn from_flat_expressions(flat_exps: &mut Vec<FlatExp>) -> Option<Self> {
         use Expr::*;
         use FlatExp::*;
-        let mut stacked_exps: Vec<Expr> = vec![];
+        let mut exp_stack: Vec<Expr> = vec![];
         while let Some(flat_exp) = flat_exps.pop() {
             match flat_exp {
+                // pop the 2 operands and push a BinaryOp expr
                 FlatBinaryOp(binary_op) => {
-                    let right_hand = stacked_exps.pop()?;
-                    let left_hand = stacked_exps.pop()?;
-                    stacked_exps.push(
+                    let left_hand = exp_stack.pop()?;
+                    let right_hand = exp_stack.pop()?;
+                    exp_stack.push(
                         BinaryOp(binary_op, Box::new(left_hand), Box::new(right_hand))
                     );
                 },
+                // pop the only operand and push a BinaryOp expr
                 FlatUnaryOp(unary_op) => {
-                    let exp = stacked_exps.pop()?;
-                    stacked_exps.push(
+                    let exp = exp_stack.pop()?;
+                    exp_stack.push(
                         UnaryOp(unary_op, Box::new(exp))
                     );
                 },
+                // push the Const
                 FlatConst(c) => {
-                    stacked_exps.push(Const(c));
+                    exp_stack.push(Const(c));
                 },
+                // Collect each subexpressions and push a Block
                 FlatBlock(sub_exp_nb) => {
                     let mut sub_exps: Vec<Expr> = vec![];
                     for i in 0..sub_exp_nb {
-                        sub_exps.push(stacked_exps.pop()?);
+                        sub_exps.push(exp_stack.pop()?);
                     }
-                    sub_exps.reverse(); // because we are iterating flat_exp in reverse
-                    stacked_exps.push(Block(sub_exps));
+                    exp_stack.push(Block(sub_exps));
                 },
+                // Collect each argument, and push a Call
                 FlatCall(name, arg_nb) => {
                     let mut args: Vec<Expr> = vec![];
                     for i in 0..arg_nb {
-                        args.push(stacked_exps.pop()?);
+                        args.push(exp_stack.pop()?);
                     }
-                    args.reverse(); // because we are iterating flat_exp in reverse
-                    stacked_exps.push(Call(name, args));
+                    exp_stack.push(Call(name, args));
                 },
+                // Collect the condition expression and the loop block,
+                // then push a WhileLoop
                 FlatWhileLoop => {
-                    let run_block = Box::new(stacked_exps.pop()?);
-                    let cond_exp = Box::new(stacked_exps.pop()?);
-                    stacked_exps.push(WhileLoop(cond_exp, run_block));
+                    let cond_exp = Box::new(exp_stack.pop()?);
+                    let run_block = Box::new(exp_stack.pop()?);
+                    exp_stack.push(WhileLoop(cond_exp, run_block));
                 },
-                FlatLocal(name) => stacked_exps.push(Local(name)),
+                // push a Local
+                FlatLocal(name) => exp_stack.push(Local(name)),
+                // Collect the condition expression and the true block,
+                // and the false block (if any)
+                // then push an If
                 FlatIf(sub_exp_count) => {
+                    let cond_exp = Box::new(exp_stack.pop()?);
+                    let true_block = Box::new(exp_stack.pop()?);
                     let mut false_block = None;
                     if sub_exp_count == 3 {
-                        false_block = Some(Box::new(stacked_exps.pop()?));
+                        false_block = Some(Box::new(exp_stack.pop()?));
                     }
-                    let true_block = Box::new(stacked_exps.pop()?);
-                    let cond_exp = Box::new(stacked_exps.pop()?);
-                    stacked_exps.push(
+                    exp_stack.push(
                         If(cond_exp, true_block, false_block)
                     );
                 },
+                // Collect the arguments, and the function block
+                // then push a FunctionDecl
                 FlatFunctionDecl(name, args) => {
-                    let fn_exp = FunctionDecl(name, args, Box::new(stacked_exps.pop()?));
-                    stacked_exps.push(fn_exp);
+                    let fn_exp = FunctionDecl(name, args, Box::new(exp_stack.pop()?));
+                    exp_stack.push(fn_exp);
                 },
+                // Collect the returned expression (if any) 
+                // then push a Return
                 FlatReturn(sub_exp_count) => {
                     if sub_exp_count == 1 {
-                        let arg = stacked_exps.pop()?;
-                        stacked_exps.push(Return(Some(Box::new(arg))));
+                        let arg = exp_stack.pop()?;
+                        exp_stack.push(Return(Some(Box::new(arg))));
                     } else {
-                        stacked_exps.push(Return(None));
+                        exp_stack.push(Return(None));
                     }
                 },
+                // Collect the expression we are assigning to `id`
+                // then push a LetDecl
                 FlatLetDecl(id) => {
-                    let arg = stacked_exps.pop()?;
-                    stacked_exps.push(LetDecl(id, Box::new(arg)));
+                    let arg = exp_stack.pop()?;
+                    exp_stack.push(LetDecl(id, Box::new(arg)));
                 },
+                // those aren't expression, but bounds
                 FlatFenced => {},
             }
         }
-        stacked_exps.reverse();
-        Some( Self { root: Block(stacked_exps) })
+        // collect all expression trees into one root
+        let root: Expr;
+        if exp_stack.len() > 1 {
+            exp_stack.reverse();
+            root = Block(exp_stack);
+        } else {
+            root = exp_stack.pop()?;
+        }
+        Some(Self { root })
     }
+
+
+    /// build an Abstract Syntax Tree from a Token slice
+    pub fn from_tokens(tokens : &[Token]) -> Result<Self, Box<dyn Error>> {
+        let mut flat_exps = parse_flat_expressions(tokens)?;
+        Self::from_flat_expressions(&mut flat_exps).ok_or(
+            Box::new(
+                ParsingError::new("Failed to parse expression into an AST.".into())
+            )
+        )
+    }
+    
+    /// lex, parse source code into an Abstract Syntax Tree
+    pub fn from_str(src: &str) -> Result<Self, Box<dyn Error>> {
+        let tokens = lex(src)?;
+        Self::from_tokens(&tokens)
+    }
+
 }
 

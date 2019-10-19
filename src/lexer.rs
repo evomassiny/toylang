@@ -62,7 +62,7 @@ pub fn lex(src: &str) -> Result<Vec<Token>, Box<dyn Error>> {
         static ref BOOLEAN_PATTERN: Regex = Regex::new(r"^(?P<token>true|false)").unwrap();
         static ref KEYWORD_PATTERN: Regex = Regex::new(
             // (\W|$) ensure that the keyword is not followed by any alphanumeric char
-            r"^(?P<token>fn|if|let|else|return|while)(\W|$)"
+            r"^(?P<token>function|if|let|else|return|while)(\W|$)"
         ).unwrap();
         static ref NUMERIC_PATTERN: Regex = Regex::new(
             // (\W|$) ensure that the float is not followed by any alphanumeric char
@@ -74,7 +74,7 @@ pub fn lex(src: &str) -> Result<Vec<Token>, Box<dyn Error>> {
         ).unwrap();
         static ref OPERATOR_PATTERN: Regex = Regex::new(
             // 2chars tokens must come first
-            r"^(?P<token>==|>=|<=|!=|\*\*|\+|&|=|/|>|<|%|\*|!|\||\-)"
+            r"^(?P<token>==|>=|<=|!=|\*\*|\|\||&&|\+|=|/|>|<|%|\*|!|\-)"
         ).unwrap();
         static ref STRING_LITERAL_PATTERN: Regex = Regex::new(
             r#"^"(?P<token>(\\"|.)*?)""#
@@ -148,7 +148,7 @@ pub fn lex(src: &str) -> Result<Vec<Token>, Box<dyn Error>> {
         if let Some(caps) = KEYWORD_PATTERN.captures(remaining_src) {
             let keyword_str: &str = caps.name("token").unwrap().as_str();
             let kind = match keyword_str {
-                "fn" => Function,
+                "function" => Function,
                 "if" => If,
                 "let" => Let,
                 "return" => Return,
@@ -195,7 +195,7 @@ pub fn lex(src: &str) -> Result<Vec<Token>, Box<dyn Error>> {
             let operator_str: &str = caps.name("token").unwrap().as_str();
             let kind = match operator_str {
                 "+" => Add,
-                "&" => And,
+                "&&" => And,
                 "=" => Assign,
                 "/" => Div,
                 "==" => Equal,
@@ -207,7 +207,7 @@ pub fn lex(src: &str) -> Result<Vec<Token>, Box<dyn Error>> {
                 "*" => Mul,
                 "!" => Not,
                 "!=" => NotEq,
-                "|" => Or,
+                "||" => Or,
                 "**" => Pow,
                 "-" => Sub,
                 operator => {
