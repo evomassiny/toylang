@@ -111,24 +111,30 @@ pub enum FlatExp {
     /// Call a function with some values
     /// consumes `n` expression => one for each function argument
     FlatCall(String, usize),
-    /// Repeatedly run an expression while the conditional expression resolves to true
+    /// Repeatedly run an expression 
+    /// while the conditional expression resolves to true
     /// consumes 2 expressions => the condition, the block
     FlatWhileLoop,
     /// Load a value from a reference (eg a variable name)
     FlatLocal(String),
-    /// Check if a conditional expression is true and run an expression if it is and another expression if it isn't
-    /// consumes 2 or 3 expression => the condition, the 'true' block, the 'false' block
+    /// An If expression with its condition, 
+    /// the block expressed when the condition holds true,
+    /// and optionaly the block expressed when it doesn't
+    /// consumes 2 or 3 expression => the condition, 
+    /// the 'true' block, the 'false' block
     FlatIf(usize),
     /// Create a function with the given name, arguments, and expression
     /// consumes 1 expression (its block)
     FlatFunctionDecl(String, Vec<String>),
     /// Return the expression from a function
-    /// consumes 0 or 1 expression, depending on either or not it returns something
+    /// consumes 0 or 1 expression, 
+    /// depending on either or not it returns something
     FlatReturn(usize),
     /// Let declaraton
     /// consumes 1 expression
     FlatLetDecl(String),
-    /// a fenced statement (i.e a line followed by an `;`, or a statement enclosed in parenthesis)
+    /// a fenced statement 
+    /// (i.e a line followed by an `;`, or a statement enclosed in parenthesis)
     /// does not consume any sub-expressions
     FlatFenced,
 }
