@@ -177,7 +177,7 @@ pub fn lex(src: &str) -> Result<Vec<Token>, Box<dyn Error>> {
                 "(" => OpenParen,
                 ";" => Semicolon,
                 "," => Comma,
-                punctuator => {
+                _ => {
                     return Err(Box::new(
                         LexingError::new(
                             format!("unexpected separator \"{}\"", &separator_str),

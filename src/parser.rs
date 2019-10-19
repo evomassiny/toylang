@@ -9,7 +9,7 @@ use crate::tokens::{
 
 /// A Parsing error, should warn the user 
 /// about which token were involved
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub struct ParsingError {
     msg: String,
 }
@@ -133,6 +133,8 @@ pub enum FlatExp {
     FlatFenced,
 }
 
+/// Parse a token slice into a flat representation 
+/// of an Abstract Syntax Tree, in Polish Notation
 pub fn parse_flat_expressions(tokens: &[Token]) -> Result<Vec<FlatExp>, ParsingError> {
     let mut exprs: Vec<FlatExp> = Vec::new();
     // in this vector, a None item represent a parsed Token
@@ -156,6 +158,7 @@ pub fn parse_flat_expressions(tokens: &[Token]) -> Result<Vec<FlatExp>, ParsingE
         let (flat_exp, parsed_tokens) =
                  if let Some(exp) = patterns::match_block(&unparsed_tokens[idx..]) { exp }
             else if let Some(exp) = patterns::match_function_declaration(&unparsed_tokens[idx..]) { exp }
+            else if let Some(exp) = patterns::match_let(&unparsed_tokens[idx..]) { exp }
             else if let Some(exp) = patterns::match_if(&unparsed_tokens[idx..]) { exp }
             else if let Some(exp) = patterns::match_while(&unparsed_tokens[idx..]) { exp }
             else if let Some(exp) = patterns::match_return(&unparsed_tokens[idx..]) { exp }
@@ -194,3 +197,59 @@ pub fn parse_flat_expressions(tokens: &[Token]) -> Result<Vec<FlatExp>, ParsingE
     Ok(exprs)
 }
 
+
+mod test {
+    use crate::lexer::lex;
+    use crate::parser::{
+        FlatExp,
+        Const,
+        UnaryOp,
+        BinaryOp,
+        BinaryOp::*,
+        ComparisonOp,
+        NumericalOp,
+        LogicalOp,
+        parse_flat_expressions,
+    };
+
+    #[test]
+    fn test_parse_flat_expressions() {
+        use FlatExp::*;
+        let tokens = lex("{ let A = 1; }").unwrap();
+        assert_eq!(
+            parse_flat_expressions(&tokens),
+            Ok(vec![
+               FlatBlock(1),
+               FlatLetDecl("A".into()),
+               FlatConst(Const::Num(1.)),
+           ])
+        );
+
+        let tokens = lex(r#"
+        fn foo(a, b) {
+             let c = a + b; 
+             return c;
+         }
+         foo(1, 3);
+        "#).unwrap();
+        assert_eq!(
+            parse_flat_expressions(&tokens),
+            Ok(vec![
+               FlatFunctionDecl(
+                   "foo".into(),
+                   vec!["a".into(), "b".into()],
+               ),
+               FlatBlock(2),
+               FlatLetDecl("c".into()),
+               FlatBinaryOp(Numerical(NumericalOp::Add)),
+               FlatLocal("a".into()),
+               FlatLocal("b".into()),
+               FlatReturn(1),
+               FlatLocal("c".into()),
+               FlatCall("foo".into(), 2),
+               FlatConst(Const::Num(1.)),
+               FlatConst(Const::Num(3.)),
+           ])
+        );
+    }
+}

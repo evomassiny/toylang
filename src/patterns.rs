@@ -117,10 +117,11 @@ pub fn match_binary_op(tokens: &[Option<&Token>]) -> Option<(FlatExp, Vec<usize>
             Some(Token { kind: Operator(OperatorKind::Assign), .. }) => {
                 return Some((FlatBinaryOp(BinaryOp::Assign), vec![i]));
             },
-            None => return None,
+            None => break,
             _ => continue,
         }
     }
+
     // parse comparison operations
     let mut paren_count = 0;
     for i in 0..tokens.len() {
@@ -140,7 +141,7 @@ pub fn match_binary_op(tokens: &[Option<&Token>]) -> Option<(FlatExp, Vec<usize>
                     }
                 }
             },
-            None => return None,
+            None => break,
             _ => continue,
         }
     }
@@ -879,6 +880,17 @@ mod test {
             patterns::match_binary_op(&unparsed_tokens),
             Some((
                 FlatExp::FlatBinaryOp(Numerical(NumericalOp::Sub)),
+                vec![1]
+            )),
+            "Failed to match binary operation"
+        );
+
+        let tokens = lex("a + a").unwrap();
+        let unparsed_tokens: Vec<Option<&Token>> = tokens.iter().map(|t| Some(t)).collect();
+        assert_eq!(
+            patterns::match_binary_op(&unparsed_tokens),
+            Some((
+                FlatExp::FlatBinaryOp(Numerical(NumericalOp::Add)),
                 vec![1]
             )),
             "Failed to match binary operation"
