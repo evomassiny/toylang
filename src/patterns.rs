@@ -45,6 +45,7 @@ fn consume_block(tokens: &[Option<&Token>]) -> Option<usize> {
 }
 
 /// match a statement (an expression ending by `;`), only consumes the `;`
+/// does match semi columns in a deeper block that the one `tokens[0]` is.
 pub fn match_semi_colomn_fenced(tokens: &[Option<&Token>]) -> Option<(FlatExp, Vec<usize>)> {
     let mut block_count = 0;
     for i in 0..tokens.len() {
@@ -86,8 +87,6 @@ pub fn match_parenthesis_fenced(tokens: &[Option<&Token>]) -> Option<(FlatExp, V
     }
     None
 }
-
-/// Match at any place in the current expression:
 
 /// Match at any place in the current expression:
 /// * `expr == expr` 
@@ -240,7 +239,7 @@ pub fn match_unary_op(tokens: &[Option<&Token>]) -> Option<(FlatExp, Vec<usize>)
     };
 }
 
-/// Match a number, a quoted string or a boolean litteral at the first itme of `token`
+/// Match a number, a quoted string or a boolean litteral at the first itme of `tokens`
 /// Match from the first item of `token`:
 /// * A string litteral
 /// * A number 
@@ -257,7 +256,7 @@ pub fn match_const(tokens: &[Option<&Token>]) -> Option<(FlatExp, Vec<usize>)> {
     None
 }
 
-/// Match a local label, eg: a variable name
+/// Match a local label, eg: a variable name from the first item of `tokens':
 pub fn match_local(tokens: &[Option<&Token>]) -> Option<(FlatExp, Vec<usize>)> {
     if tokens.len() < 1 { return None; }
     if let Some(Token { kind: Identifier(ref id), ..} ) = tokens[0] {
@@ -266,7 +265,7 @@ pub fn match_local(tokens: &[Option<&Token>]) -> Option<(FlatExp, Vec<usize>)> {
     None
 }
 
-/// match a block starting at the 1st item of `token`
+/// match a block starting at the 1st item of `tokens`
 pub fn match_block(tokens: &[Option<&Token>]) -> Option<(FlatExp, Vec<usize>)> {
     if tokens.len() < 2 { return None; }
     let mut consumed_tokens =  vec![];
@@ -304,7 +303,7 @@ pub fn match_block(tokens: &[Option<&Token>]) -> Option<(FlatExp, Vec<usize>)> {
     None
 }
 
-/// match a function call starting at the 1st item of `token`
+/// match a function call starting at the 1st item of `tokens`
 pub fn match_function_call(tokens: &[Option<&Token>]) -> Option<(FlatExp, Vec<usize>)> {
     if tokens.len() < 3 { return None; }
     let mut consumed_tokens = vec![];
