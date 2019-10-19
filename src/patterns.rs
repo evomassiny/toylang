@@ -36,6 +36,48 @@ fn consume_block(tokens: &[Option<&Token>]) -> Option<usize> {
     None
 }
 
+/// match a statement (an expression ending by `;`), only consumes the `;`
+pub fn match_semi_colomn_fenced(tokens: &[Option<&Token>]) -> Option<(FlatExp, Vec<usize>)> {
+    let mut block_count = 0;
+    for i in 0..tokens.len() {
+        match tokens[i] {
+            Some(&Token { kind: Separator(OpenBlock), ..}) => block_count += 1,
+            Some(&Token { kind: Separator(CloseBlock), ..}) => block_count -= 1,
+            Some(&Token { kind: Separator(Semicolon), ..}) => {
+                if block_count == 0 { 
+                    return Some((FlatFenced, vec![i])); 
+                }
+            },
+            None => return None,
+            _ => continue,
+        }
+    }
+    None
+}
+
+/// match a statement inside parenthesis, consumes the parenthesis
+pub fn match_parenthesis_fenced(tokens: &[Option<&Token>]) -> Option<(FlatExp, Vec<usize>)> {
+    let mut parent_count = 0;
+    let mut consumed_tokens =  vec![];
+    for i in 0..tokens.len() {
+        match tokens[i] {
+            Some(&Token { kind: Separator(OpenParen), ..}) => {
+                if parent_count == 0 { consumed_tokens.push(i); }
+                parent_count += 1;
+            }
+            Some(&Token { kind: Separator(CloseParen), ..}) => {
+                parent_count -= 1;
+                if parent_count == 0 { 
+                    consumed_tokens.push(i);
+                    return Some((FlatFenced, consumed_tokens)); 
+                }
+            },
+            None => return None,
+            _ => continue,
+        }
+    }
+    None
+}
 pub fn match_binary_op(tokens: &[Option<&Token>]) -> Option<(FlatExp, Vec<usize>)> {
     // todo
     None
@@ -88,7 +130,7 @@ pub fn match_block(tokens: &[Option<&Token>]) -> Option<(FlatExp, Vec<usize>)> {
 }
 
 /// match a function call starting at the 1st item of `token`
-pub fn match_call(tokens: &[Option<&Token>]) -> Option<(FlatExp, Vec<usize>)> {
+pub fn match_function_call(tokens: &[Option<&Token>]) -> Option<(FlatExp, Vec<usize>)> {
     if tokens.len() < 3 { return None; }
     let mut consumed_tokens = vec![];
     let name: String;
@@ -228,7 +270,7 @@ pub fn match_while(tokens: &[Option<&Token>]) -> Option<(FlatExp, Vec<usize>)> {
 
 /// match (starting from the 1st token):
 /// `fn identifier( {block}`
-pub fn match_function_decl(tokens: &[Option<&Token>]) -> Option<(FlatExp, Vec<usize>)> {
+pub fn match_function_declaration(tokens: &[Option<&Token>]) -> Option<(FlatExp, Vec<usize>)> {
     if tokens.len() < 6 { return None; }
     let mut consumed_tokens =  vec![];
     let name: String; 
@@ -364,7 +406,7 @@ mod test {
         let tokens = lex("call()").unwrap();
         let unparsed_tokens: Vec<Option<&Token>> = tokens.iter().map(|t| Some(t)).collect();
         assert_eq!(
-            patterns::match_call(&unparsed_tokens),
+            patterns::match_function_call(&unparsed_tokens),
             Some((FlatExp::FlatCall("call".into(), 0), vec![0_usize, 1, 2])),
             "Failed to match function call pattern"
         );
@@ -372,7 +414,7 @@ mod test {
         let tokens = lex("call(1,(1+3))").unwrap();
         let unparsed_tokens: Vec<Option<&Token>> = tokens.iter().map(|t| Some(t)).collect();
         assert_eq!(
-            patterns::match_call(&unparsed_tokens),
+            patterns::match_function_call(&unparsed_tokens),
             Some((FlatExp::FlatCall("call".into(), 2), vec![0_usize, 1, 3, 9])),
             "Failed to match function call pattern"
         );
@@ -380,7 +422,7 @@ mod test {
         let tokens = lex("call(1,").unwrap();
         let unparsed_tokens: Vec<Option<&Token>> = tokens.iter().map(|t| Some(t)).collect();
         assert_eq!(
-            patterns::match_call(&unparsed_tokens),
+            patterns::match_function_call(&unparsed_tokens),
             None,
             "Failed to match function call pattern"
         );
@@ -514,7 +556,7 @@ mod test {
         "#).unwrap();
         let unparsed_tokens: Vec<Option<&Token>> = tokens.iter().map(|t| Some(t)).collect();
         assert_eq!(
-            patterns::match_function_decl(&unparsed_tokens),
+            patterns::match_function_declaration(&unparsed_tokens),
             Some((
                 FlatExp::FlatFunctionDecl(
                     "foo".into(),
@@ -523,6 +565,58 @@ mod test {
                 vec![0, 1, 2, 3, 4, 5, 6]
             )),
             "Failed to match function declaration pattern"
+        );
+    }
+
+    #[test]
+    fn match_semi_colomn_fenced_pattern() {
+        let tokens = lex("let a= 1; a = 2 * a;").unwrap();
+        let unparsed_tokens: Vec<Option<&Token>> = tokens.iter().map(|t| Some(t)).collect();
+        assert_eq!(
+            patterns::match_semi_colomn_fenced(&unparsed_tokens),
+            Some((
+                FlatExp::FlatFenced,
+                vec![4]
+            )),
+            "Failed to match line statement"
+        );
+        // don't match statement in subexpressions
+        let tokens = lex("{ let a = 1; a = 2 * a;}").unwrap();
+        let unparsed_tokens: Vec<Option<&Token>> = tokens.iter().map(|t| Some(t)).collect();
+        assert_eq!(
+            patterns::match_semi_colomn_fenced(&unparsed_tokens),
+            None,
+            "should ignore semi columns in subexpressions "
+        );
+        // nothing to parse
+        let tokens = lex("let a = 1").unwrap();
+        let unparsed_tokens: Vec<Option<&Token>> = tokens.iter().map(|t| Some(t)).collect();
+        assert_eq!(
+            patterns::match_semi_colomn_fenced(&unparsed_tokens),
+            None,
+            "Failed to match line statement"
+        );
+    }
+
+    #[test]
+    fn match_parenthesis_fenced_pattern() {
+        let tokens = lex("let a = (1 +1) * 2;").unwrap();
+        let unparsed_tokens: Vec<Option<&Token>> = tokens.iter().map(|t| Some(t)).collect();
+        assert_eq!(
+            patterns::match_parenthesis_fenced(&unparsed_tokens),
+            Some((
+                FlatExp::FlatFenced,
+                vec![3, 7]
+            )),
+            "Failed to match parenthesis statement"
+        );
+        // don't match statement in subexpressions
+        let tokens = lex("( let a = 1;").unwrap();
+        let unparsed_tokens: Vec<Option<&Token>> = tokens.iter().map(|t| Some(t)).collect();
+        assert_eq!(
+            patterns::match_parenthesis_fenced(&unparsed_tokens),
+            None,
+            "should ignore unclosed parenthesis "
         );
     }
 }

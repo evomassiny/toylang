@@ -128,13 +128,12 @@ pub enum FlatExp {
     /// Let declaraton
     /// consumes 1 expression
     FlatLetDecl(String),
-    /// a single statement (i.e a line followed by an `;`)
-    /// consumes 1 expression
-    FlatStatement,
+    /// a fenced statement (i.e a line followed by an `;`, or a statement enclosed in parenthesis)
+    /// does not consume any sub-expressions
+    FlatFenced,
 }
 
 pub fn parse_flat_expressions(tokens: &[Token]) -> Result<Vec<FlatExp>, ParsingError> {
-    use FlatExp::*;
     let mut exprs: Vec<FlatExp> = Vec::new();
     // in this vector, a None item represent a parsed Token
     let mut unparsed_tokens: Vec<Option<&Token>> = tokens.iter().map(|t| Some(t)).collect();
@@ -148,13 +147,26 @@ pub fn parse_flat_expressions(tokens: &[Token]) -> Result<Vec<FlatExp>, ParsingE
 
         // match expresions patterns
         let (flat_exp, parsed_tokens) =
-            if let Some(exp) = patterns::match_block(&unparsed_tokens[idx..]) { exp }
+                 if let Some(exp) = patterns::match_block(&unparsed_tokens[idx..]) { exp }
+            else if let Some(exp) = patterns::match_function_declaration(&unparsed_tokens[idx..]) { exp }
+            else if let Some(exp) = patterns::match_if(&unparsed_tokens[idx..]) { exp }
+            else if let Some(exp) = patterns::match_while(&unparsed_tokens[idx..]) { exp }
+            else if let Some(exp) = patterns::match_return(&unparsed_tokens[idx..]) { exp }
+            else if let Some(exp) = patterns::match_function_call(&unparsed_tokens[idx..]) { exp }
+            else if let Some(exp) = patterns::match_semi_colomn_fenced(&unparsed_tokens[idx..]) { exp }
+            else if let Some(exp) = patterns::match_parenthesis_fenced(&unparsed_tokens[idx..]) { exp }
             else if let Some(exp) = patterns::match_binary_op(&unparsed_tokens[idx..]) { exp }
             else if let Some(exp) = patterns::match_unary_op(&unparsed_tokens[idx..]) { exp }
-            else { return Err(ParsingError::new("could not parse token".into()));};
+            else if let Some(exp) = patterns::match_const(&unparsed_tokens[idx..]) { exp }
+            else { 
+                return Err(ParsingError::new("could not parse token".into()));
+            };
 
         // store parsed expression into a flat tree
-        exprs.push(flat_exp);
+        match flat_exp {
+            FlatFenced => {}, // ignore thoses, they just separators between expressions
+            _ => exprs.push(flat_exp),
+        }
         
         // consume parsed tokens
         for i in parsed_tokens {
