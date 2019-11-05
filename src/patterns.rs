@@ -733,7 +733,7 @@ mod test {
     #[test]
     fn match_function_declaration_pattern() {
         let tokens = lex(r#"
-        fn foo(a, b) {
+        function foo(a, b) {
             return a + b;
         }
         "#).unwrap();
@@ -925,7 +925,7 @@ mod test {
             "this is not a binary operation"
         );
 
-        let tokens = lex("a | (1-1)").unwrap();
+        let tokens = lex("a || (1-1)").unwrap();
         let unparsed_tokens: Vec<Option<&Token>> = tokens.iter().map(|t| Some(t)).collect();
         assert_eq!(
             patterns::match_binary_op(&unparsed_tokens),

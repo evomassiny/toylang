@@ -233,7 +233,7 @@ mod test {
         );
 
         let tokens = lex(r#"
-        fn foo(a, b) {
+        function foo(a, b) {
              let c = a + b; 
              return c;
          }
