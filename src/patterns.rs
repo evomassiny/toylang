@@ -17,7 +17,6 @@ use crate::tokens::{
     OperatorKind,
     OperatorKind::*,
     KeywordKind::*,
-    SrcCursor
 };
 
 /// return the index of the last CloseBlock token of a block
@@ -307,15 +306,18 @@ pub fn match_block(tokens: &[Option<&Token>]) -> Option<(FlatExp, Vec<usize>)> {
 pub fn match_function_call(tokens: &[Option<&Token>]) -> Option<(FlatExp, Vec<usize>)> {
     if tokens.len() < 3 { return None; }
     let mut consumed_tokens = vec![];
-    let name: String;
+    let mut sub_expr_count = 0;
+    //let name: String;
     // match identifier
     match tokens[0] {
         Some(&Token { kind: Identifier(ref id), ..}) => {
-            consumed_tokens.push(0);
-            name = id.into();
+            //consumed_tokens.push(0);
+            //name = id.into();
+            sub_expr_count += 1;
         },
         _ => return None,
     }
+    // TODO: here we should only match the rightmost parenthesis group
     // match `(`
     match tokens[1] {
         Some(&Token { kind: Separator(OpenParen), ..}) => consumed_tokens.push(1),
@@ -324,7 +326,6 @@ pub fn match_function_call(tokens: &[Option<&Token>]) -> Option<(FlatExp, Vec<us
     // iter until match `)`
     let mut i = 1;
     let mut paren_count = 1;
-    let mut sub_expr_count = 0;
     while (i + 1) < tokens.len() {
         i += 1;
         match tokens[i] {
@@ -334,8 +335,8 @@ pub fn match_function_call(tokens: &[Option<&Token>]) -> Option<(FlatExp, Vec<us
                 if paren_count == 0 {
                     consumed_tokens.push(i);
                     // one comma means 2 arguments
-                    if sub_expr_count > 0 { sub_expr_count += 1; }
-                    return Some((FlatCall(name, sub_expr_count), consumed_tokens));
+                    if sub_expr_count > 1 { sub_expr_count += 1; }
+                    return Some((FlatCall(sub_expr_count), consumed_tokens));
                 }
             },
             Some(&Token { kind: Separator(Comma), ..}) => {
@@ -529,23 +530,13 @@ pub fn match_let(tokens: &[Option<&Token>]) -> Option<(FlatExp, Vec<usize>)> {
 
 mod test {
     use crate::patterns;
-    use crate::tokens::{
-        TokenKind,
-        Token,
-        LiteralKind,
-        SeparatorKind,
-        OperatorKind,
-        KeywordKind,
-        SrcCursor
-    };
+    use crate::tokens::Token;
     use crate::lexer::lex;
     use crate::parser::{
         FlatExp,
         Const,
         UnaryOp,
-        BinaryOp,
         BinaryOp::*,
-        ComparisonOp,
         NumericalOp,
         LogicalOp,
     };
@@ -590,7 +581,7 @@ mod test {
         let unparsed_tokens: Vec<Option<&Token>> = tokens.iter().map(|t| Some(t)).collect();
         assert_eq!(
             patterns::match_function_call(&unparsed_tokens),
-            Some((FlatExp::FlatCall("call".into(), 0), vec![0_usize, 1, 2])),
+            Some((FlatExp::FlatCall(1), vec![1, 2])),
             "Failed to match function call pattern"
         );
         // test call with arguments
@@ -598,7 +589,7 @@ mod test {
         let unparsed_tokens: Vec<Option<&Token>> = tokens.iter().map(|t| Some(t)).collect();
         assert_eq!(
             patterns::match_function_call(&unparsed_tokens),
-            Some((FlatExp::FlatCall("call".into(), 2), vec![0_usize, 1, 3, 9])),
+            Some((FlatExp::FlatCall(3), vec![1, 3, 9])),
             "Failed to match function call pattern"
         );
         // test invalid

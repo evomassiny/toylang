@@ -2,14 +2,9 @@ use std::error::Error;
 use crate::lexer::lex;
 use crate::parser::{
     FlatExp,
-    FlatExp::*,
     Const,
     UnaryOp,
     BinaryOp,
-    BinaryOp::*,
-    ComparisonOp,
-    LogicalOp,
-    NumericalOp,
     parse_flat_expressions,
     ParsingError,
 };
@@ -27,7 +22,8 @@ pub enum Expr {
     Block(Vec<Expr>),
     /// Call a function with some values
 	/// each sub expressions being arguments
-    Call(String, Vec<Expr>),
+    //Call(String, Vec<Expr>),
+    Call(Box<Expr>, Vec<Expr>),
     /// Repeatedly run an expression while 
     /// the conditional expression resolves to true
     /// consumes 2 expressions => the condition, the block
@@ -45,6 +41,96 @@ pub enum Expr {
     /// Let declaraton
     LetDecl(String, Box<Expr>),
 }
+impl Expr {
+    /// returns the number of sub-expressions that must be evaluated before `self`
+    pub fn count_sub_expressions(&self) -> usize {
+        use Expr::*;
+        match self {
+            BinaryOp(..) => 2,
+            UnaryOp(..) => 1,
+            Const(_) => 0,
+            Block(exprs) => exprs.len(),
+            Call(_id, exprs) => exprs.len() + 1,
+            WhileLoop(..) => 2,
+            Local(_) => 0,
+            If(_cond, _true_block, false_block) => {
+                if false_block.is_some() { 3} else {2}
+            } ,
+            FunctionDecl(..) => 1,
+            Return(e) => if e.is_some() { 1} else {0},
+            LetDecl(..) => 1,
+        }
+    }
+
+    /// returns the references to the sub-expressions 
+    /// that must be evaluated before `self`
+    pub fn get_sub_expression(&self, idx: usize) -> Option<&Expr> {
+        use Expr::*;
+        match self {
+            BinaryOp(_op, a, b) => {
+                match idx {
+                    0 => Some(a.as_ref()),
+                    1 => Some(b.as_ref()),
+                    _ => None
+                }
+            },
+            UnaryOp(_op, a) => {
+                match idx {
+                    0 => Some(a.as_ref()),
+                    _ => None
+                }
+            },
+            Const(_) => None,
+            Block(exprs) => Some(exprs.get(idx)?),
+            Call(id, args) => {
+                match idx {
+                    0 => Some(id.as_ref()),
+                    i => Some(args.get(i -1)?),
+                }
+            },
+            WhileLoop(cond, block) => {
+                match idx {
+                    0 => Some(cond.as_ref()),
+                    1 => Some(block.as_ref()),
+                    _ => None
+                }
+            },
+            Local(_) => None,
+            If(cond, true_block, ref false_block) => {
+                match idx {
+                    0 => Some(cond.as_ref()),
+                    1 => Some(true_block.as_ref()),
+                    2 => match false_block {
+                        Some(e) => Some(e.as_ref()),
+                        None => None,
+                    },
+                    _ => None
+                }
+            } ,
+            FunctionDecl(_name, _args, block) => {
+                match idx {
+                    0 => Some(block.as_ref()),
+                    _ => None
+                }
+            },
+            Return(e) => {
+                match idx {
+                    0 => match e {
+                        Some(e) => Some(e.as_ref()),
+                        None => None,
+                    },
+                    _ => None
+                }
+            },
+            LetDecl(_name, e) => {
+                match idx {
+                    0 => Some(e.as_ref()),
+                    _ => None
+                }
+            },
+        }
+    }
+}
 
 #[derive(Debug)]
 pub struct Ast {
@@ -52,7 +138,7 @@ pub struct Ast {
 }
 impl Ast {
     
-    /// Consumes each FlatExp of `flat_exps` to build a Abstract Syntax Tree from it.
+    /// Consumes each FlatExp of `flat_exps` to build an Abstract Syntax Tree from it.
     pub fn from_flat_expressions(flat_exps: &mut Vec<FlatExp>) -> Option<Self> {
         use Expr::*;
         use FlatExp::*;
@@ -81,18 +167,19 @@ impl Ast {
                 // Collect each subexpressions and push a Block
                 FlatBlock(sub_exp_nb) => {
                     let mut sub_exps: Vec<Expr> = vec![];
-                    for i in 0..sub_exp_nb {
+                    for _ in 0..sub_exp_nb {
                         sub_exps.push(exp_stack.pop()?);
                     }
                     exp_stack.push(Block(sub_exps));
                 },
                 // Collect each argument, and push a Call
-                FlatCall(name, arg_nb) => {
+                FlatCall(arg_nb) => {
+                    let id_exp = Box::new(exp_stack.pop()?);
                     let mut args: Vec<Expr> = vec![];
-                    for i in 0..arg_nb {
+                    for _ in 0..(arg_nb -1) {
                         args.push(exp_stack.pop()?);
                     }
-                    exp_stack.push(Call(name, args));
+                    exp_stack.push(Call(id_exp, args));
                 },
                 // Collect the condition expression and the loop block,
                 // then push a WhileLoop

@@ -4,7 +4,6 @@ use crate::patterns;
 use crate::tokens::{
     TokenKind,
     Token,
-    SrcCursor
 };
 
 /// A Parsing error, should warn the user 
@@ -110,8 +109,10 @@ pub enum FlatExp {
     /// consumes `n` expressions
     FlatBlock(usize),
     /// Call a function with some values
-    /// consumes `n` expression => one for each function argument
-    FlatCall(String, usize),
+     /// consumes `n` expression => one for the identifier + one for each function argument
+    FlatCall(usize),
+    ///// consumes `n` expression =>  one for each function argument
+    //FlatCall(String, usize),
     /// Repeatedly run an expression 
     /// while the conditional expression resolves to true
     /// consumes 2 expressions => the condition, the block
@@ -210,12 +211,8 @@ mod test {
     use crate::parser::{
         FlatExp,
         Const,
-        UnaryOp,
-        BinaryOp,
         BinaryOp::*,
-        ComparisonOp,
         NumericalOp,
-        LogicalOp,
         parse_flat_expressions,
     };
 
@@ -253,7 +250,9 @@ mod test {
                FlatLocal("b".into()),
                FlatReturn(1),
                FlatLocal("c".into()),
-               FlatCall("foo".into(), 2),
+               FlatCall(3),
+               //FlatCall("foo".into(), 2),
+               FlatLocal("foo".into()),
                FlatConst(Const::Num(1.)),
                FlatConst(Const::Num(3.)),
            ])

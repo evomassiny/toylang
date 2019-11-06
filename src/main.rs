@@ -9,6 +9,7 @@ mod tokens;
 mod patterns;
 mod parser;
 mod ast;
+mod instructions;
 use ast::Ast;
 
 
