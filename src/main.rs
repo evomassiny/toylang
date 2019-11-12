@@ -10,6 +10,7 @@ mod patterns;
 mod parser;
 mod ast;
 mod instructions;
+mod instructions_set;
 use ast::Ast;
 
 

@@ -262,10 +262,7 @@ pub fn lex(src: &str) -> Result<Vec<Token>, Box<dyn Error>> {
 mod test {
     use crate::tokens::SeparatorKind::*;
     use crate::tokens::TokenKind::*;
-    use crate::tokens::OperatorKind::*;
-    use crate::tokens::LiteralKind::*;
     use crate::tokens::KeywordKind::*;
-    use crate::lexer::lex;
 
     #[test]
     fn lex_literals() {
