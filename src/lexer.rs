@@ -263,6 +263,9 @@ mod test {
     use crate::tokens::SeparatorKind::*;
     use crate::tokens::TokenKind::*;
     use crate::tokens::KeywordKind::*;
+    use crate::tokens::OperatorKind::*;
+    use crate::tokens::LiteralKind::*;
+    use crate::lexer::lex;
 
     #[test]
     fn lex_literals() {

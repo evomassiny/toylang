@@ -45,7 +45,7 @@ fn if_to_instructions(mut sub_instructions: Vec<Vec<Instruction>>, label_counter
 
     let cond_block = sub_instructions.pop()?;
     let true_block = sub_instructions.pop()?;
-    let false_block = sub_instructions;
+    let false_block = sub_instructions.pop();
 
     // conditions
     instructions.extend(cond_block);
@@ -104,18 +104,25 @@ impl InstructionSet {
             // at this point, all sub-expressions were already been solved
             // put them in a dedicated Vector, in the correct order
             let mut sub_instructions = Vec::new();
-            for _ in 0..sub_expr_count {
+            for i in 0..sub_expr_count {
                 sub_instructions.push(instructions.pop()?);
             }
+            sub_instructions.reverse();
             use Expr::*;
             use Instruction::*;
             let insts: Vec<Instruction> = match *node {
                 Const(c) => vec![Val(Value::from_const(c))],
                 Return(_) => return_to_instructions(sub_instructions, &mut label_counter)?,
                 If(..) => if_to_instructions(sub_instructions, &mut label_counter)?,
+                Block(..) => {
+                    let mut block_instructions = Vec::new();
+                    for sub_inst in sub_instructions {
+                        block_instructions.extend(sub_inst);
+                    }
+                    block_instructions
+                },
                 //BinaryOp(op, ..) => { },
                 //UnaryOp(op, a) => { },
-                //Block(exprs) => {},
                 //Call(id, args) => { },
                 //WhileLoop(cond, block) => { },
                 //Local(id) => {},
@@ -123,7 +130,6 @@ impl InstructionSet {
                 //LetDecl(_name, e) => { },
                 _ => { Vec::new()}
             };
-            dbg!(&insts);
             if insts.len() > 0 {
                 instructions.push(insts);
             }
@@ -140,12 +146,31 @@ impl InstructionSet {
 mod test {
     use crate::ast::Ast;
     use crate::instructions_set::InstructionSet;
-    use crate::instructions::Instruction;
+    use crate::instructions::{Instruction,Value,Address};
 
     #[test]
-    fn test_instruction_set() {
-        let ast = Ast::from_str(r"a = 1 + 1;").unwrap();
-        dbg!(InstructionSet::new(&ast.root));
+    fn test_if_instruction_set() {
+        use Address::*;
+        use Instruction::*;
+        use Value::*;
+        let ast = Ast::from_str(r#"
+        if (true) {
+          true;
+        } else {
+          false;
+        }"#).unwrap();
+        assert_eq!(
+            InstructionSet::new(&ast.root).unwrap().instructions,
+			vec![
+                Val(Bool(true)),
+                GotoIf(Mark(0)),
+                Val(Bool(false)),
+                Goto(Mark(1)),
+                Label(Mark(0)),
+                Val(Bool(true)),
+                Label(Mark(1)),
+            ],
+		);
     }
 }
 

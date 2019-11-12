@@ -4,7 +4,7 @@ use crate::ast::{
 };
 use crate::parser::Const;
 
-#[derive(Debug)]
+#[derive(Debug,Clone,PartialEq)]
 pub enum Value {
     /// any quoted string
     Str(String),
@@ -28,7 +28,7 @@ impl Value {
 }
 
 /// a Code address, i.e: a location in an instruction set
-#[derive(Debug)]
+#[derive(Debug,Clone,Copy,PartialEq,Eq)]
 pub enum Address {
     /// a number used to identify any instruction
     Mark(usize),
@@ -36,7 +36,7 @@ pub enum Address {
     Index(usize),
 }
 
-#[derive(Debug)]
+#[derive(Debug,Clone,PartialEq)]
 pub enum Instruction {
     // jump
     Goto(Address),
