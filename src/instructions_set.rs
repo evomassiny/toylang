@@ -6,6 +6,7 @@ use crate::instructions::{Value,Instruction,Address};
 /// So `return <expr>;` is compiled as:
 ///     <expr>
 ///     PushToNext(1)
+///     DelStack
 ///     FnRet
 fn return_to_instructions(mut sub_instructions: Vec<Vec<Instruction>>) -> Option<Vec<Instruction>> {
     use Instruction::*;
@@ -16,11 +17,12 @@ fn return_to_instructions(mut sub_instructions: Vec<Vec<Instruction>>) -> Option
         },
         None => {
             // a function that returns nothing actually 
-            // returns null
-            instructions.push(Val(Value::Null));
+            // returns Undefined
+            instructions.push(Val(Value::Undefined));
         }
     }
     instructions.push(PushToNext(1));
+    instructions.push(DelStack);
     instructions.push(FnRet);
     Some(instructions)
 }
@@ -118,9 +120,9 @@ fn local_to_instructions(id: &str) -> Option<Vec<Instruction>> {
 
 /// Build the intructions needed to run a Call expression
 /// So `<expr_called>(<expr_a>, <expr_b>);` is compiled as:
-///     <expr_a>
 ///     <expr_b>
-///     PushToNext(2) // push the 2 args
+///     <expr_a>        // order so the first poped is the first arg
+///     PushToNext(2)   // push the 2 args
 ///     <expr_called>
 ///     FnCall
 fn call_to_instructions(mut sub_instructions: Vec<Vec<Instruction>>) -> Option<Vec<Instruction>> {
@@ -142,6 +144,79 @@ fn call_to_instructions(mut sub_instructions: Vec<Vec<Instruction>>) -> Option<V
     instructions.extend(expr_called);
     // perform the Call itself
     instructions.push(FnCall);
+
+    Some(instructions)
+}
+
+/// Build the intructions needed to run a FunctionDecl expression
+/// So `function id(a, b) { <expr> }` is compiled as:
+///     Goto(end)       // skip the function block if were not calling it
+///     Label(start)    // address of the function
+///     NewStack
+///     NewRef 'a'      // args
+///     Store 'a'
+///     NewRef 'b'
+///     Store 'b'
+///     <expr>              // the function block instructions
+///     Value(Undefined)    // Return a value no matter what
+///     PushToNext(1)
+///     DelStack
+///     FnRet               // quit the function evaluation 
+///     Label(end)          // the piece of code that is executed when the function is 
+///                         // declared
+///     Value(Address(start)) // Put the address of the function into a var `id`
+///     NewRef 'id'
+///     Store 'id'
+///     
+/// Note: this function will remove the `NewStack` and `DelStack` of the function block
+/// TODO: replace `name` by an expression
+fn function_decl_to_instructions(
+    mut sub_instructions: Vec<Vec<Instruction>>,
+    name: &str,
+    args: &Vec<String>,
+    label_counter: &mut usize) -> Option<Vec<Instruction>> {
+    use Instruction::*;
+    let mut instructions = Vec::new();
+    // set the address of the function start and end
+    let start = Address::Mark(*label_counter);
+    *label_counter += 1;
+    let end = Address::Mark(*label_counter);
+    *label_counter += 1;
+    // avoid evaluating the function if were not calling it
+    instructions.push(Goto(end));
+    // set the `start` label here
+    instructions.push(Label(start)); 
+    // create a new stack
+    instructions.push(NewStack); 
+    
+    // load args
+    for arg in args {
+        instructions.push(NewRef(arg.clone()));
+        instructions.push(Store(arg.clone()));
+    }
+    
+    // process the function block
+    let mut block = sub_instructions.pop()?;
+    //delete the NewStack, its redondant
+    block.remove(0);
+    //delete the DelStack, its redondant
+    let _ = block.pop()?;
+    // insert the instruction block
+    instructions.extend(block);
+
+    // insert a return statement in case none are defined in the block
+    instructions.push(Val(Value::Undefined));
+    instructions.push(PushToNext(1));
+    instructions.push(DelStack);
+    instructions.push(FnRet);
+    
+    // set the end address
+    instructions.push(Label(end)); 
+
+    // set the variable that will hold the function address
+    instructions.push(Val(Value::Function(start)));
+    instructions.push(NewRef(name.into()));
+    instructions.push(Store(name.into()));
 
     Some(instructions)
 }
@@ -201,10 +276,11 @@ impl InstructionSet {
                 LetDecl(name, _) => let_to_instructions(name, sub_instructions)?,
                 Local(id) => local_to_instructions(id)?,
                 Call(..) => call_to_instructions(sub_instructions)?,
+                FunctionDecl(name, args, _block) => function_decl_to_instructions(
+                    sub_instructions, name, args, &mut label_counter)?,
                 //BinaryOp(op, ..) => { },
                 //UnaryOp(op, a) => { },
                 //WhileLoop(cond, block) => { },
-                //FunctionDecl(_name, _args, block) => { },
                 _ => { Vec::new()}
             };
             if insts.len() > 0 {
@@ -329,6 +405,37 @@ mod test {
             vec![
                 Load("foo".into()),
                 FnCall,
+            ],
+        );
+    }
+    #[test]
+    fn test_function_decl_instruction_set() {
+        use Instruction::*;
+        use Address::*;
+        use Value::*;
+        let ast = Ast::from_str("function foo(a, b) { return true; }").unwrap();
+        assert_eq!(
+            InstructionSet::new(&ast.root).unwrap().instructions,
+            vec![
+                Goto(Mark(1)),  // skip function block if we're not calling it
+                Label(Mark(0)), // begin address
+                NewStack,
+                NewRef("a".into()), // first arg 
+                Store("a".into()),
+                NewRef("b".into()), // 2nd arg
+                Store("b".into()),
+                Val(Bool(true)), // function block
+                PushToNext(1),   
+                DelStack,
+                FnRet,
+                Val(Undefined),  // backup return call
+                PushToNext(1),
+                DelStack,
+                FnRet,
+                Label(Mark(1)),  // end address
+                Val(Function(Mark(0))), // put function address into a `foo` var
+                NewRef("foo".into()),
+                Store("foo".into()),
             ],
         );
     }

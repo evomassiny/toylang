@@ -48,14 +48,16 @@ pub enum Instruction {
     NewRef(String), 
     Ref(String), 
     Load(String),
-    Store(String),
+    /// pop the stack and store the value into the variable pointed by `String`
+    /// if the stack is empty, store `Value::Undefined`
+    Store(String), 
     // value 
     Val(Value),
     // Arguments and return value
     /// Call a function
-    FnCall,
+    FnCall, // doesn't need to push a new stack, but must create a new environnement
     /// Exit a function
-    FnRet,
+    FnRet,  // doesn't need to pop a stack, but must delete the last environnement
     // stack machine states
     /// move the `n` last elements of the current stack to a passthrough buffer
     PushToNext(usize),
