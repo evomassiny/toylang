@@ -506,9 +506,10 @@ pub fn match_return(tokens: &[Option<&Token>]) -> Option<(FlatExp, Vec<usize>)> 
 }
 
 /// match (starting from the 1st token):
+/// * `let identifier;`
 /// * `let identifier = expression`
 pub fn match_let(tokens: &[Option<&Token>]) -> Option<(FlatExp, Vec<usize>)> {
-    if tokens.len() < 4 { return None; }
+    if tokens.len() < 3 { return None; }
     let name: String;
     // match `let`
     match tokens[0] {
@@ -520,12 +521,20 @@ pub fn match_let(tokens: &[Option<&Token>]) -> Option<(FlatExp, Vec<usize>)> {
         Some(&Token { kind: Identifier(ref id), ..}) => name = id.into(),
         _ => return None,
     }
-    // match `=`
+    // match `=` or None
     match tokens[2] {
-        Some(&Token { kind: Operator(OperatorKind::Assign), ..}) => {},
+        Some(&Token { kind: Operator(OperatorKind::Assign), ..}) => {
+            // imcomplete statement like `let a = `
+            if tokens.len() < 4 {
+                return None;
+            }
+        },
+        // case `let id;` 
+        None => return Some((FlatLetDecl(name, 0), vec![0, 1])),
         _ => return None,
     }
-    Some((FlatLetDecl(name), vec![0, 1, 2]))
+    // case `let id = expression;` 
+    Some((FlatLetDecl(name, 1), vec![0, 1, 2]))
 }
 
 mod test {
@@ -688,8 +697,17 @@ mod test {
         let unparsed_tokens: Vec<Option<&Token>> = tokens.iter().map(|t| Some(t)).collect();
         assert_eq!(
             patterns::match_let(&unparsed_tokens),
-            Some((FlatExp::FlatLetDecl("a".into()), vec![0_usize, 1, 2])),
+            Some((FlatExp::FlatLetDecl("a".into(), 1), vec![0_usize, 1, 2])),
             "Failed to match let pattern"
+        );
+        // test variable declaration without value assignment
+        let tokens = lex("let a").unwrap();
+        let mut unparsed_tokens: Vec<Option<&Token>> = tokens.iter().map(|t| Some(t)).collect();
+        unparsed_tokens.push(None); // simulate semicolon
+        assert_eq!(
+            patterns::match_let(&unparsed_tokens),
+            Some((FlatExp::FlatLetDecl("a".into(), 0), vec![0_usize, 1])),
+            "Failed to match let pattern without assignment"
         );
         // test variable declaration
         let tokens = lex("let a = ").unwrap();
@@ -697,7 +715,7 @@ mod test {
         assert_eq!(
             patterns::match_let(&unparsed_tokens),
             None,
-            "Failed to match let pattern"
+            "Matched imcomplete statements"
         );
     }
 

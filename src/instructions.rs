@@ -16,6 +16,8 @@ pub enum Value {
     Function,
     /// 
     Null,
+    /// 
+    Undefined,
 }
 impl Value {
     pub fn from_const(expr: &Const) -> Self { 
@@ -43,15 +45,26 @@ pub enum Instruction {
     GotoIf(Address),
     Label(Address),
     // Variable bindings
-    Load,
-    Store,
+    NewRef(String), 
+    Ref(String), 
+    Load(String),
+    Store(String),
     // value 
     Val(Value),
     // Arguments and return value
-    PushStack,
-    PopStack,
     FnCall(String, usize),
     FnRet,
+    // stack machine states
+    /// move the `n` last elements of the current stack to a passthrough buffer
+    PushToNext(usize),
+    /// Creates a new stack
+    /// then, if any element are in the passthrough buffer push those elements to it
+    NewStack,
+    /// clear all values of the current stack
+    ClearStack,
+    /// remove the last stack
+    /// then if any element are in the passthrough buffer push those elements to the current one
+    DelStack,
     // Native function
     // ... TODO
     // Binary Instructions

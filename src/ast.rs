@@ -22,7 +22,6 @@ pub enum Expr {
     Block(Vec<Expr>),
     /// Call a function with some values
 	/// each sub expressions being arguments
-    //Call(String, Vec<Expr>),
     Call(Box<Expr>, Vec<Expr>),
     /// Repeatedly run an expression while 
     /// the conditional expression resolves to true
@@ -39,7 +38,7 @@ pub enum Expr {
     /// Return the expression from a function
     Return(Option<Box<Expr>>),
     /// Let declaraton
-    LetDecl(String, Box<Expr>),
+    LetDecl(String, Option<Box<Expr>>),
 }
 impl Expr {
     /// returns the number of sub-expressions that must be evaluated before `self`
@@ -54,11 +53,11 @@ impl Expr {
             WhileLoop(..) => 2,
             Local(_) => 0,
             If(_cond, _true_block, false_block) => {
-                if false_block.is_some() { 3} else {2}
+                if false_block.is_some() { 3 } else { 2 }
             } ,
             FunctionDecl(..) => 1,
-            Return(e) => if e.is_some() { 1} else {0},
-            LetDecl(..) => 1,
+            Return(e) => if e.is_some() { 1 } else { 0 },
+            LetDecl(_, e) => if e.is_some() { 1 } else { 0 },
         }
     }
 
@@ -124,7 +123,10 @@ impl Expr {
             },
             LetDecl(_name, e) => {
                 match idx {
-                    0 => Some(e.as_ref()),
+                    0 => match e {
+                        Some(e) => Some(e.as_ref()),
+                        None => None,
+                    },
                     _ => None
                 }
             },
@@ -170,6 +172,7 @@ impl Ast {
                     for _ in 0..sub_exp_nb {
                         sub_exps.push(exp_stack.pop()?);
                     }
+                    sub_exps.reverse();
                     exp_stack.push(Block(sub_exps));
                 },
                 // Collect each argument, and push a Call
@@ -220,11 +223,15 @@ impl Ast {
                         exp_stack.push(Return(None));
                     }
                 },
-                // Collect the expression we are assigning to `id`
+                // Collect the expression we are assigning to `id` (if any)
                 // then push a LetDecl
-                FlatLetDecl(id) => {
-                    let arg = exp_stack.pop()?;
-                    exp_stack.push(LetDecl(id, Box::new(arg)));
+                FlatLetDecl(id, sub_exp_count) => {
+                    if sub_exp_count == 1 {
+                        let arg = exp_stack.pop()?;
+                        exp_stack.push(LetDecl(id, Some(Box::new(arg))));
+                    } else {
+                        exp_stack.push(LetDecl(id, None));
+                    }
                 },
                 // those aren't expression, but bounds
                 FlatFenced => {},

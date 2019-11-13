@@ -133,8 +133,9 @@ pub enum FlatExp {
     /// depending on either or not it returns something
     FlatReturn(usize),
     /// Let declaraton
-    /// consumes 1 expression
-    FlatLetDecl(String),
+    /// consumes 1 or 2 expressions, 
+    /// depending on either or not we assign a value to it
+    FlatLetDecl(String, usize),
     /// a fenced statement 
     /// (i.e a line followed by an `;`, or a statement enclosed in parenthesis)
     /// does not consume any sub-expressions
@@ -224,7 +225,7 @@ mod test {
             parse_flat_expressions(&tokens),
             Ok(vec![
                FlatBlock(1),
-               FlatLetDecl("A".into()),
+               FlatLetDecl("A".into(), 1),
                FlatConst(Const::Num(1.)),
            ])
         );
@@ -244,7 +245,7 @@ mod test {
                    vec!["a".into(), "b".into()],
                ),
                FlatBlock(2),
-               FlatLetDecl("c".into()),
+               FlatLetDecl("c".into(), 1),
                FlatBinaryOp(Numerical(NumericalOp::Add)),
                FlatLocal("a".into()),
                FlatLocal("b".into()),

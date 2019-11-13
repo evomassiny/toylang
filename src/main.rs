@@ -11,6 +11,7 @@ mod parser;
 mod ast;
 mod instructions;
 mod instructions_set;
+mod executor;
 use ast::Ast;
 
 

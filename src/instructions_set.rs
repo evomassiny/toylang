@@ -4,37 +4,59 @@ use crate::instructions::{Value,Instruction,Address};
 /// Build the intructions needed to run a `return` expressions
 /// If no expression follows the `return`, a Value::Null is returned
 /// So `return <expr>;` is compiled as:
-/// <expr>
-/// PushStack
-/// FnRet
-fn return_to_instructions(mut sub_instructions: Vec<Vec<Instruction>>, _label_counter: &mut usize) -> Option<Vec<Instruction>> {
+///     <expr>
+///     FnRet
+fn return_to_instructions(mut sub_instructions: Vec<Vec<Instruction>>) -> Option<Vec<Instruction>> {
     use Instruction::*;
     let mut instructions = Vec::new();
     match sub_instructions.pop() {
         Some(sub_instr) => {
             instructions.extend(sub_instr);
-            instructions.push(PushStack); 
         },
         None => {
             // a function that returns nothing actually 
             // returns null
             instructions.push(Val(Value::Null));
-            instructions.push(PushStack); 
         }
     }
+    instructions.push(PushToNext(1));
     instructions.push(FnRet);
+    Some(instructions)
+}
+
+/// Build the intructions needed to run a `block` expressions
+/// each block creates a new value stack,
+/// each expression in a block must operate on an empty stack
+///  `{ <expr_a>; <expr_b>; }` is compiled as
+///     NewStack
+///     <expr_a>
+///     ClearStack
+///     <expr_b>
+///     DelStack
+fn block_to_instructions(mut sub_instructions: Vec<Vec<Instruction>>) -> Option<Vec<Instruction>> {
+    use Instruction::*;
+    let mut instructions: Vec<Instruction> = Vec::new();
+    instructions.push(NewStack);
+    for (i, sub_inst) in sub_instructions.into_iter().enumerate() {
+        if i > 0 {
+            // each expression must run in a clear stack
+            instructions.push(ClearStack);
+        }
+        instructions.extend(sub_inst);
+    }
+    instructions.push(DelStack);
     Some(instructions)
 }
 
 /// Build the intructions needed to run an `If` expressions
 /// So `if (<expr_cond>) { <expr_true> } else { <expr_false> }` is compiled as:
-/// <expr_cond>
-/// GotoIf 'label_true'
-/// <expr_false>
-/// Goto 'end'
-/// Label 'label_true'
-/// <expr_true>
-/// Label 'end'
+///     <expr_cond>
+///     GotoIf 'label_true'
+///     <expr_false>
+///     Goto 'end'
+///     Label 'label_true'
+///     <expr_true>
+///     Label 'end'
 fn if_to_instructions(mut sub_instructions: Vec<Vec<Instruction>>, label_counter: &mut usize) -> Option<Vec<Instruction>> {
     use Instruction::*;
     let mut instructions = Vec::new();
@@ -64,7 +86,36 @@ fn if_to_instructions(mut sub_instructions: Vec<Vec<Instruction>>, label_counter
     Some(instructions)
 }
 
+/// Build the instructions needed to run a LetDecl expression.
+/// * `let id = <expr>`  is compiled as:
+///     <expr>
+///     NewRef 'id'
+///     Store 'id'
+/// *`let id;`  is compiled as:
+///     NewRef 'id'
+fn let_to_instructions(id: &str, mut sub_instructions: Vec<Vec<Instruction>>) -> Option<Vec<Instruction>> {
+    use Instruction::*;
+    let mut instructions = Vec::new();
+    if let Some(sub_inst) = sub_instructions.pop() {
+        instructions.extend(sub_inst);
+        instructions.push(NewRef(id.into()));
+        instructions.push(Store(id.into()));
+    } else {
+        instructions.push(NewRef(id.into()));
+    }
+    Some(instructions)
+}
+
+/// Build the instructions needed to run a Local expression.
+/// `a`  is compiled as:
+///     Load 'a'
+fn local_to_instructions(id: &str) -> Option<Vec<Instruction>> {
+    use Instruction::*;
+    Some(vec![Load(id.into())])
+}
+
 #[derive(Debug)]
+/// A struct that represents an instruction set, ie: a compiled Abstract Syntax Tree
 pub struct InstructionSet {
     instructions: Vec<Instruction>
 }
@@ -112,22 +163,16 @@ impl InstructionSet {
             use Instruction::*;
             let insts: Vec<Instruction> = match *node {
                 Const(c) => vec![Val(Value::from_const(c))],
-                Return(_) => return_to_instructions(sub_instructions, &mut label_counter)?,
+                Return(_) => return_to_instructions(sub_instructions)?,
                 If(..) => if_to_instructions(sub_instructions, &mut label_counter)?,
-                Block(..) => {
-                    let mut block_instructions = Vec::new();
-                    for sub_inst in sub_instructions {
-                        block_instructions.extend(sub_inst);
-                    }
-                    block_instructions
-                },
+                Block(..) => block_to_instructions(sub_instructions)?,
+                LetDecl(name, _) => let_to_instructions(name, sub_instructions)?,
+                Local(id) => local_to_instructions(id)?,
                 //BinaryOp(op, ..) => { },
                 //UnaryOp(op, a) => { },
                 //Call(id, args) => { },
                 //WhileLoop(cond, block) => { },
-                //Local(id) => {},
                 //FunctionDecl(_name, _args, block) => { },
-                //LetDecl(_name, e) => { },
                 _ => { Vec::new()}
             };
             if insts.len() > 0 {
@@ -164,13 +209,70 @@ mod test {
 			vec![
                 Val(Bool(true)),
                 GotoIf(Mark(0)),
+                NewStack,
                 Val(Bool(false)),
+                DelStack,
                 Goto(Mark(1)),
                 Label(Mark(0)),
+                NewStack,
                 Val(Bool(true)),
+                DelStack,
                 Label(Mark(1)),
             ],
 		);
+    }
+
+    #[test]
+    fn test_let_instruction_set() {
+        use Instruction::*;
+        use Value::*;
+        let ast = Ast::from_str("let some_ref;").unwrap();
+        assert_eq!(
+            InstructionSet::new(&ast.root).unwrap().instructions,
+            vec![
+                NewRef("some_ref".into()),
+            ],
+        );
+        let ast = Ast::from_str("let some_ref = true;").unwrap();
+        assert_eq!(
+            InstructionSet::new(&ast.root).unwrap().instructions,
+            vec![
+                Val(Bool(true)),
+                NewRef("some_ref".into()),
+                Store("some_ref".into()),
+            ],
+        );
+    }
+
+    #[test]
+    fn test_local_instruction_set() {
+        use Instruction::*;
+        use Value::*;
+        let ast = Ast::from_str("a;").unwrap();
+        assert_eq!(
+            InstructionSet::new(&ast.root).unwrap().instructions,
+            vec![
+                Load("a".into()),
+            ],
+        );
+    }
+    #[test]
+    fn test_block_instruction_set() {
+        use Instruction::*;
+        use Value::*;
+        let ast = Ast::from_str("{ 1; 2; 3; }").unwrap();
+        assert_eq!(
+            InstructionSet::new(&ast.root).unwrap().instructions,
+            vec![
+                NewStack,
+                Val(Num(1.)),
+                ClearStack,
+                Val(Num(2.)),
+                ClearStack,
+                Val(Num(3.)),
+                DelStack,
+            ],
+        );
     }
 }
 
