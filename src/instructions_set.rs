@@ -5,6 +5,7 @@ use crate::instructions::{Value,Instruction,Address};
 /// If no expression follows the `return`, a Value::Null is returned
 /// So `return <expr>;` is compiled as:
 ///     <expr>
+///     PushToNext(1)
 ///     FnRet
 fn return_to_instructions(mut sub_instructions: Vec<Vec<Instruction>>) -> Option<Vec<Instruction>> {
     use Instruction::*;
@@ -65,6 +66,7 @@ fn if_to_instructions(mut sub_instructions: Vec<Vec<Instruction>>, label_counter
     let end = Address::Mark(*label_counter);
     *label_counter += 1;
 
+    sub_instructions.reverse();
     let cond_block = sub_instructions.pop()?;
     let true_block = sub_instructions.pop()?;
     let false_block = sub_instructions.pop();
@@ -114,6 +116,37 @@ fn local_to_instructions(id: &str) -> Option<Vec<Instruction>> {
     Some(vec![Load(id.into())])
 }
 
+/// Build the intructions needed to run a Call expression
+/// So `<expr_called>(<expr_a>, <expr_b>);` is compiled as:
+///     <expr_a>
+///     <expr_b>
+///     PushToNext(2) // push the 2 args
+///     <expr_called>
+///     FnCall
+fn call_to_instructions(mut sub_instructions: Vec<Vec<Instruction>>) -> Option<Vec<Instruction>> {
+    use Instruction::*;
+    let mut instructions = Vec::new();
+    // set in order <arg 2>, <arg 1>, <arg 0>, <expr called> 
+    sub_instructions.reverse();
+    let expr_called = sub_instructions.pop()?;
+    let arg_nb = sub_instructions.len();
+    for sub_inst in sub_instructions {
+        // evaluate args
+        instructions.extend(sub_inst);
+    }
+    // push args to the next stack
+    if arg_nb > 0 {
+        instructions.push(PushToNext(arg_nb));
+    }
+    // evaluate the called expression
+    instructions.extend(expr_called);
+    // perform the Call itself
+    instructions.push(FnCall);
+
+    Some(instructions)
+}
+
+
 #[derive(Debug)]
 /// A struct that represents an instruction set, ie: a compiled Abstract Syntax Tree
 pub struct InstructionSet {
@@ -158,7 +191,6 @@ impl InstructionSet {
             for i in 0..sub_expr_count {
                 sub_instructions.push(instructions.pop()?);
             }
-            sub_instructions.reverse();
             use Expr::*;
             use Instruction::*;
             let insts: Vec<Instruction> = match *node {
@@ -168,9 +200,9 @@ impl InstructionSet {
                 Block(..) => block_to_instructions(sub_instructions)?,
                 LetDecl(name, _) => let_to_instructions(name, sub_instructions)?,
                 Local(id) => local_to_instructions(id)?,
+                Call(..) => call_to_instructions(sub_instructions)?,
                 //BinaryOp(op, ..) => { },
                 //UnaryOp(op, a) => { },
-                //Call(id, args) => { },
                 //WhileLoop(cond, block) => { },
                 //FunctionDecl(_name, _args, block) => { },
                 _ => { Vec::new()}
@@ -200,9 +232,9 @@ mod test {
         use Value::*;
         let ast = Ast::from_str(r#"
         if (true) {
-          true;
+          "true_block";
         } else {
-          false;
+          "false_block";
         }"#).unwrap();
         assert_eq!(
             InstructionSet::new(&ast.root).unwrap().instructions,
@@ -210,12 +242,12 @@ mod test {
                 Val(Bool(true)),
                 GotoIf(Mark(0)),
                 NewStack,
-                Val(Bool(false)),
+                Val(Str("false_block".into())),
                 DelStack,
                 Goto(Mark(1)),
                 Label(Mark(0)),
                 NewStack,
-                Val(Bool(true)),
+                Val(Str("true_block".into())),
                 DelStack,
                 Label(Mark(1)),
             ],
@@ -271,6 +303,32 @@ mod test {
                 ClearStack,
                 Val(Num(3.)),
                 DelStack,
+            ],
+        );
+    }
+    #[test]
+    fn test_call_instruction_set() {
+        use Instruction::*;
+        use Value::*;
+        // test with args
+        let ast = Ast::from_str("foo(a, b)").unwrap();
+        assert_eq!(
+            InstructionSet::new(&ast.root).unwrap().instructions,
+            vec![
+                Load("b".into()),
+                Load("a".into()),
+                PushToNext(2),
+                Load("foo".into()),
+                FnCall,
+            ],
+        );
+        // test without args
+        let ast = Ast::from_str("foo()").unwrap();
+        assert_eq!(
+            InstructionSet::new(&ast.root).unwrap().instructions,
+            vec![
+                Load("foo".into()),
+                FnCall,
             ],
         );
     }

@@ -12,8 +12,8 @@ pub enum Value {
     Num(f64),
     /// boolean `true` or `false`
     Bool(bool),
-    /// 
-    Function,
+    /// A function address
+    Function(Address),
     /// 
     Null,
     /// 
@@ -52,7 +52,9 @@ pub enum Instruction {
     // value 
     Val(Value),
     // Arguments and return value
-    FnCall(String, usize),
+    /// Call a function
+    FnCall,
+    /// Exit a function
     FnRet,
     // stack machine states
     /// move the `n` last elements of the current stack to a passthrough buffer

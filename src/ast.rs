@@ -20,7 +20,7 @@ pub enum Expr {
     Const(Const),
     /// Run several expressions from top-to-bottom
     Block(Vec<Expr>),
-    /// Call a function with some values
+    /// Call on an expression
 	/// each sub expressions being arguments
     Call(Box<Expr>, Vec<Expr>),
     /// Repeatedly run an expression while 
@@ -172,7 +172,6 @@ impl Ast {
                     for _ in 0..sub_exp_nb {
                         sub_exps.push(exp_stack.pop()?);
                     }
-                    sub_exps.reverse();
                     exp_stack.push(Block(sub_exps));
                 },
                 // Collect each argument, and push a Call
