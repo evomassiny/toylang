@@ -9,10 +9,12 @@ mod tokens;
 mod patterns;
 mod parser;
 mod ast;
+mod preprocessors;
 mod instructions;
-mod instructions_set;
+mod compiler;
 mod executor;
 use ast::Ast;
+use compiler::Compiler;
 
 
 fn main() -> std::io::Result<()> {
@@ -24,9 +26,11 @@ fn main() -> std::io::Result<()> {
     let mut src = String::new();
     file.read_to_string(&mut src)?;
 
-	// build and print the ast
-    let ast = Ast::from_str(&src);
-    dbg!(ast);
+	// build the ast
+    let ast = Ast::from_str(&src).unwrap();
+    // Compile into instructions
+    let instructions = Compiler::compile(&ast.root).unwrap();
+    dbg!(instructions);
 
     Ok(())
 }

@@ -1,7 +1,3 @@
-use crate::ast::{
-    //Ast,
-    Expr
-};
 use crate::parser::Const;
 
 #[derive(Debug,Clone,PartialEq)]
@@ -13,37 +9,19 @@ pub enum Value {
     /// boolean `true` or `false`
     Bool(bool),
     /// A function address
-    Function(Address),
+    Function(usize),
     /// 
     Null,
     /// 
     Undefined,
 }
-impl Value {
-    pub fn from_const(expr: &Const) -> Self { 
-        return match *expr {
-            Const::Str(ref s) => Self::Str(s.clone()),
-            Const::Num(n) => Self::Num(n),
-            Const::Bool(b) => Self::Bool(b),
-        };
-    }
-}
-
-/// a Code address, i.e: a location in an instruction set
-#[derive(Debug,Clone,Copy,PartialEq,Eq)]
-pub enum Address {
-    /// a number used to identify any instruction
-    Mark(usize),
-    /// An actual index in an instruction set
-    Index(usize),
-}
 
 #[derive(Debug,Clone,PartialEq)]
 pub enum Instruction {
     // jump
-    Goto(Address),
-    GotoIf(Address),
-    Label(Address),
+    Goto(usize),
+    GotoIf(usize),
+    Label(usize),
     // Variable bindings
     NewRef(String), 
     Ref(String), 
@@ -69,8 +47,6 @@ pub enum Instruction {
     /// remove the last stack
     /// then if any element are in the passthrough buffer push those elements to the current one
     DelStack,
-    // Native function
-    // ... TODO
     // Binary Instructions
     // * Numerical
     Add,
