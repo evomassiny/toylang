@@ -88,6 +88,23 @@ pub fn match_parenthesis_fenced(tokens: &[Option<&Token>]) -> Option<(FlatExp, V
 }
 
 /// Match at any place in the current expression:
+/// * `id = expr` 
+pub fn match_assign(tokens: &[Option<&Token>]) -> Option<(FlatExp, Vec<usize>)> {
+    if tokens.len() < 3 { return None; }
+    let name: String;
+    match tokens[0] {
+        Some(&Token { kind: Identifier(ref id), ..}) => name = id.into(),
+        _ => return None,
+    }
+    match tokens[1] {
+        Some(Token { kind: Operator(OperatorKind::Assign), .. }) => {
+            Some((FlatExp::FlatAssign(name) , vec![0, 1]))
+        },
+        _ => None,
+    }
+}
+
+/// Match at any place in the current expression:
 /// * `expr == expr` 
 /// * `expr != expr` 
 /// * `expr >= expr` 
@@ -109,16 +126,6 @@ pub fn match_binary_op(tokens: &[Option<&Token>]) -> Option<(FlatExp, Vec<usize>
     // the operator token must be at least the index 1
     // which ensure that we don't match unary operation
     const START_IDX: usize = 1; 
-    // parse assignation
-    for i in 0..tokens.len() {
-        match tokens[i] {
-            Some(Token { kind: Operator(OperatorKind::Assign), .. }) => {
-                return Some((FlatBinaryOp(BinaryOp::Assign), vec![i]));
-            },
-            None => break,
-            _ => continue,
-        }
-    }
 
     // parse comparison operations
     let mut paren_count = 0;
@@ -957,6 +964,20 @@ mod test {
                 vec![0]
             )),
             "Failed to match local"
+        );
+    }
+
+    #[test]
+    fn match_assign_pattern() {
+        let tokens = lex("a = 1").unwrap();
+        let unparsed_tokens: Vec<Option<&Token>> = tokens.iter().map(|t| Some(t)).collect();
+        assert_eq!(
+            patterns::match_assign(&unparsed_tokens),
+            Some((
+                FlatExp::FlatAssign("a".into()),
+                vec![0, 1]
+            )),
+            "Failed to match assign"
         );
     }
 }

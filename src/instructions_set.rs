@@ -1,5 +1,15 @@
 use crate::ast::Expr;
 use crate::instructions::{Value,Instruction,Address};
+use crate::parser::{
+    UnaryOp::*,
+    BinaryOp::*,
+    NumericalOp,
+    ComparisonOp,
+    LogicalOp,
+    UnaryOp,
+};
+use Instruction::*;
+use Address::*;
 
 /// Build the intructions needed to run a `return` expressions
 /// If no expression follows the `return`, a Value::Null is returned
@@ -9,7 +19,6 @@ use crate::instructions::{Value,Instruction,Address};
 ///     DelStack
 ///     FnRet
 fn return_to_instructions(mut sub_instructions: Vec<Vec<Instruction>>) -> Option<Vec<Instruction>> {
-    use Instruction::*;
     let mut instructions = Vec::new();
     match sub_instructions.pop() {
         Some(sub_instr) => {
@@ -37,7 +46,6 @@ fn return_to_instructions(mut sub_instructions: Vec<Vec<Instruction>>) -> Option
 ///     <expr_b>
 ///     DelStack
 fn block_to_instructions(mut sub_instructions: Vec<Vec<Instruction>>) -> Option<Vec<Instruction>> {
-    use Instruction::*;
     let mut instructions: Vec<Instruction> = Vec::new();
     instructions.push(NewStack);
     for (i, sub_inst) in sub_instructions.into_iter().enumerate() {
@@ -61,11 +69,10 @@ fn block_to_instructions(mut sub_instructions: Vec<Vec<Instruction>>) -> Option<
 ///     <expr_true>
 ///     Label 'end'
 fn if_to_instructions(mut sub_instructions: Vec<Vec<Instruction>>, label_counter: &mut usize) -> Option<Vec<Instruction>> {
-    use Instruction::*;
     let mut instructions = Vec::new();
-    let true_block_addr = Address::Mark(*label_counter);
+    let true_block_addr = Mark(*label_counter);
     *label_counter += 1;
-    let end = Address::Mark(*label_counter);
+    let end = Mark(*label_counter);
     *label_counter += 1;
 
     sub_instructions.reverse();
@@ -98,7 +105,6 @@ fn if_to_instructions(mut sub_instructions: Vec<Vec<Instruction>>, label_counter
 /// *`let id;`  is compiled as:
 ///     NewRef 'id'
 fn let_to_instructions(id: &str, mut sub_instructions: Vec<Vec<Instruction>>) -> Option<Vec<Instruction>> {
-    use Instruction::*;
     let mut instructions = Vec::new();
     if let Some(sub_inst) = sub_instructions.pop() {
         instructions.extend(sub_inst);
@@ -114,7 +120,6 @@ fn let_to_instructions(id: &str, mut sub_instructions: Vec<Vec<Instruction>>) ->
 /// `a`  is compiled as:
 ///     Load 'a'
 fn local_to_instructions(id: &str) -> Option<Vec<Instruction>> {
-    use Instruction::*;
     Some(vec![Load(id.into())])
 }
 
@@ -126,7 +131,6 @@ fn local_to_instructions(id: &str) -> Option<Vec<Instruction>> {
 ///     <expr_called>
 ///     FnCall
 fn call_to_instructions(mut sub_instructions: Vec<Vec<Instruction>>) -> Option<Vec<Instruction>> {
-    use Instruction::*;
     let mut instructions = Vec::new();
     // set in order <arg 2>, <arg 1>, <arg 0>, <expr called> 
     sub_instructions.reverse();
@@ -175,12 +179,11 @@ fn function_decl_to_instructions(
     name: &str,
     args: &Vec<String>,
     label_counter: &mut usize) -> Option<Vec<Instruction>> {
-    use Instruction::*;
     let mut instructions = Vec::new();
     // set the address of the function start and end
-    let start = Address::Mark(*label_counter);
+    let start = Mark(*label_counter);
     *label_counter += 1;
-    let end = Address::Mark(*label_counter);
+    let end = Mark(*label_counter);
     *label_counter += 1;
     // avoid evaluating the function if were not calling it
     instructions.push(Goto(end));
@@ -221,6 +224,155 @@ fn function_decl_to_instructions(
     Some(instructions)
 }
 
+/// Build the intructions needed to run a numerical BinaryOp
+/// So `<expr_a> + <expr_b>` is compiled as:
+///     <expr_b>
+///     <expr_a>
+///     Add
+fn numerical_op_to_instructions(op: &NumericalOp, mut sub_instructions: Vec<Vec<Instruction>>) -> Option<Vec<Instruction>> {
+    let mut instructions = Vec::new();
+    // last instruction must be at the bottom of the stack
+    instructions.extend(sub_instructions.pop()?);
+    instructions.extend(sub_instructions.pop()?);
+    // append the actual Operation instruction
+    let operation_instruction = match *op {
+        NumericalOp::Add => Instruction::Add,
+        NumericalOp::Sub => Instruction::Sub,
+        NumericalOp::Div => Instruction::Div,
+        NumericalOp::Mul => Instruction::Mul,
+        NumericalOp::Pow => Instruction::Pow,
+        NumericalOp::Mod => Instruction::Mod,
+    };
+    instructions.push(operation_instruction);
+    Some(instructions)
+}
+
+/// Build the intructions needed to run a comparison BinaryOp
+/// So `<expr_a> > <expr_b>` is compiled as:
+///     <expr_b>
+///     <expr_a>
+///     GreaterThan
+fn comparison_op_to_instructions(op: &ComparisonOp, mut sub_instructions: Vec<Vec<Instruction>>) -> Option<Vec<Instruction>> {
+    let mut instructions = Vec::new();
+    // last instruction must be at the bottom of the stack
+    instructions.extend(sub_instructions.pop()?);
+    instructions.extend(sub_instructions.pop()?);
+    // append the actual Operation instruction
+    let operation_instruction = match *op {
+        ComparisonOp::Equal => Instruction::Equal,
+        ComparisonOp::NotEqual => Instruction::NotEqual,
+        ComparisonOp::GreaterThan => Instruction::GreaterThan,
+        ComparisonOp::GreaterThanOrEqual => Instruction::GreaterThanOrEqual,
+        ComparisonOp::LessThan => Instruction::LessThan,
+        ComparisonOp::LessThanOrEqual => Instruction::LessThanOrEqual,
+    };
+    instructions.push(operation_instruction);
+    Some(instructions)
+}
+
+/// Build the intructions needed to run a Logical binary operation, eg `&&` and `||`.
+/// Handle shortcut evaluation
+/// * So `<expr_a> && <expr_b>` is compiled as:
+///     <expr_a>
+///     GotoIf 'right_hand'
+///     Goto 'end'
+///     Label 'right_hand'
+///     <expr_b>
+///     And
+///     Label 'end'
+/// * So `<expr_a> || <expr_b>` is compiled as:
+///     <expr_a>
+///     GotoIf 'end'
+///     <expr_b>
+///     Or
+///     Label 'end'
+fn logical_op_to_instructions(op: &LogicalOp, mut sub_instructions: Vec<Vec<Instruction>>, label_counter: &mut usize) -> Option<Vec<Instruction>> {
+    // avoid evaluating the function if were not calling it
+    let right_hand = sub_instructions.pop()?;
+    // process the left hand of the `and`
+    let mut instructions = sub_instructions.pop()?;
+    // prepare the `end` label
+    let end = Mark(*label_counter);
+    *label_counter += 1;
+    // append the actual Operation instructions
+    match *op {
+        LogicalOp::And => {
+            let right_label = Mark(*label_counter);
+            *label_counter += 1;
+            instructions.push(GotoIf(right_label)); 
+            instructions.push(Goto(end)); 
+            instructions.push(Label(right_label)); 
+            instructions.extend(right_hand);
+            instructions.push(And); 
+
+        },
+        LogicalOp::Or => {
+            instructions.push(GotoIf(end)); 
+            instructions.extend(right_hand);
+            instructions.push(Or); 
+        },
+    };
+    instructions.push(Label(end)); 
+
+    Some(instructions)
+}
+
+
+/// Build the intructions needed to run a Assign BinaryOp
+/// So `id = <expr>` is compiled as:
+///     <expr>
+///     Assign(id)
+fn assign_to_instructions(name: &str, mut sub_instructions: Vec<Vec<Instruction>>) -> Option<Vec<Instruction>> {
+    let mut instructions = sub_instructions.pop()?;
+    instructions.push(Store(name.into()));
+    Some(instructions)
+}
+
+/// Build the intructions needed to run an UnaryOp
+/// * So `! <expr>` is compiled as:
+///     <expr>
+///     Not
+/// * So `+ <expr>` is compiled as:
+///     <expr>
+///     Plus
+/// * So `- <expr>` is compiled as:
+///     <expr>
+///     Not
+fn unary_op_to_instructions(op: &UnaryOp, mut sub_instructions: Vec<Vec<Instruction>>) -> Option<Vec<Instruction>> {
+    let mut instructions = sub_instructions.pop()?;
+    let inst = match *op {
+        UnaryOp::Minus => Instruction::Minus,
+        UnaryOp::Plus => Instruction::Plus,
+        UnaryOp::Not => Instruction::Not,
+    };
+    instructions.push(inst);
+    Some(instructions)
+}
+
+/// Build the intructions needed to run WhileLoop
+/// * So `while (<cond_expr>) { <block_expr>}` is compiled as:
+///     Goto 'cond'
+///     Label 'block'
+///     <block_expr>
+///     Label 'cond'
+///     <cond_expr>
+///     GotoIf 'block'
+fn while_to_instructions(mut sub_instructions: Vec<Vec<Instruction>>, label_counter: &mut usize) -> Option<Vec<Instruction>> {
+    let cond_label = Mark(*label_counter);
+    *label_counter += 1;
+    let block_label = Mark(*label_counter);
+    *label_counter += 1;
+    let mut instructions = Vec::new();
+    instructions.push(Goto(cond_label));
+    instructions.push(Label(block_label));
+    // append block expressions
+    instructions.extend(sub_instructions.pop()?);
+    instructions.push(Label(cond_label));
+    // append condition expressions
+    instructions.extend(sub_instructions.pop()?);
+    instructions.push(GotoIf(block_label));
+    Some(instructions)
+}
 
 #[derive(Debug)]
 /// A struct that represents an instruction set, ie: a compiled Abstract Syntax Tree
@@ -266,22 +418,29 @@ impl InstructionSet {
             for i in 0..sub_expr_count {
                 sub_instructions.push(instructions.pop()?);
             }
+            // Build the intruction set needed to evaluate the node expression
             use Expr::*;
-            use Instruction::*;
             let insts: Vec<Instruction> = match *node {
-                Const(c) => vec![Val(Value::from_const(c))],
+                Const(c) => vec![Instruction::Val(Value::from_const(c))],
                 Return(_) => return_to_instructions(sub_instructions)?,
                 If(..) => if_to_instructions(sub_instructions, &mut label_counter)?,
                 Block(..) => block_to_instructions(sub_instructions)?,
                 LetDecl(name, _) => let_to_instructions(name, sub_instructions)?,
                 Local(id) => local_to_instructions(id)?,
+                Assign(id, ..) => assign_to_instructions(id, sub_instructions)?,
                 Call(..) => call_to_instructions(sub_instructions)?,
                 FunctionDecl(name, args, _block) => function_decl_to_instructions(
                     sub_instructions, name, args, &mut label_counter)?,
-                //BinaryOp(op, ..) => { },
-                //UnaryOp(op, a) => { },
-                //WhileLoop(cond, block) => { },
-                _ => { Vec::new()}
+                BinaryOp(op, ..) => {
+                    match op {
+                        Numerical(num_op) => numerical_op_to_instructions(num_op, sub_instructions)?,
+                        Comparison(comp_op) => comparison_op_to_instructions(comp_op, sub_instructions)?,
+                        Logical(logical_op) => logical_op_to_instructions(
+                            logical_op, sub_instructions, &mut label_counter)?,
+                    }
+                },
+                UnaryOp(op, ..) => unary_op_to_instructions(op, sub_instructions)?,
+                WhileLoop(..) => while_to_instructions(sub_instructions, &mut label_counter)?,
             };
             if insts.len() > 0 {
                 instructions.push(insts);
@@ -300,12 +459,12 @@ mod test {
     use crate::ast::Ast;
     use crate::instructions_set::InstructionSet;
     use crate::instructions::{Instruction,Value,Address};
+    use Address::*;
+    use Instruction::*;
+    use Value::*;
 
     #[test]
     fn test_if_instruction_set() {
-        use Address::*;
-        use Instruction::*;
-        use Value::*;
         let ast = Ast::from_str(r#"
         if (true) {
           "true_block";
@@ -332,8 +491,6 @@ mod test {
 
     #[test]
     fn test_let_instruction_set() {
-        use Instruction::*;
-        use Value::*;
         let ast = Ast::from_str("let some_ref;").unwrap();
         assert_eq!(
             InstructionSet::new(&ast.root).unwrap().instructions,
@@ -354,8 +511,6 @@ mod test {
 
     #[test]
     fn test_local_instruction_set() {
-        use Instruction::*;
-        use Value::*;
         let ast = Ast::from_str("a;").unwrap();
         assert_eq!(
             InstructionSet::new(&ast.root).unwrap().instructions,
@@ -366,8 +521,6 @@ mod test {
     }
     #[test]
     fn test_block_instruction_set() {
-        use Instruction::*;
-        use Value::*;
         let ast = Ast::from_str("{ 1; 2; 3; }").unwrap();
         assert_eq!(
             InstructionSet::new(&ast.root).unwrap().instructions,
@@ -384,8 +537,6 @@ mod test {
     }
     #[test]
     fn test_call_instruction_set() {
-        use Instruction::*;
-        use Value::*;
         // test with args
         let ast = Ast::from_str("foo(a, b)").unwrap();
         assert_eq!(
@@ -410,9 +561,6 @@ mod test {
     }
     #[test]
     fn test_function_decl_instruction_set() {
-        use Instruction::*;
-        use Address::*;
-        use Value::*;
         let ast = Ast::from_str("function foo(a, b) { return true; }").unwrap();
         assert_eq!(
             InstructionSet::new(&ast.root).unwrap().instructions,
@@ -436,6 +584,110 @@ mod test {
                 Val(Function(Mark(0))), // put function address into a `foo` var
                 NewRef("foo".into()),
                 Store("foo".into()),
+            ],
+        );
+    }
+    #[test]
+    fn test_assign_instruction_set() {
+        let ast = Ast::from_str("a = 2").unwrap();
+        assert_eq!(
+            InstructionSet::new(&ast.root).unwrap().instructions,
+            vec![
+                Val(Num(2.)),
+                Store("a".into()),
+            ],
+        );
+    }
+    #[test]
+    fn test_numerical_binary_op_instruction_set() {
+        let ast = Ast::from_str("1 + 2").unwrap();
+        assert_eq!(
+            InstructionSet::new(&ast.root).unwrap().instructions,
+            vec![
+                Val(Num(2.)),
+                Val(Num(1.)),
+                Add,
+            ],
+        );
+    }
+    #[test]
+    fn test_comparison_binary_op_instruction_set() {
+        let ast = Ast::from_str("1 <= 2").unwrap();
+        assert_eq!(
+            InstructionSet::new(&ast.root).unwrap().instructions,
+            vec![
+                Val(Num(2.)),
+                Val(Num(1.)),
+                LessThanOrEqual
+            ],
+        );
+    }
+    #[test]
+    fn test_logical_binary_op_instruction_set() {
+        // test AND
+        let ast = Ast::from_str("true && false").unwrap();
+        assert_eq!(
+            InstructionSet::new(&ast.root).unwrap().instructions,
+            vec![
+                Val(Bool(true)),
+                GotoIf(Mark(1)), // success path
+                Goto(Mark(0)), // failure path
+                Label(Mark(1)),
+                Val(Bool(false)),
+                And,
+                Label(Mark(0)),
+            ],
+        );
+        // test OR
+        let ast = Ast::from_str("true || false").unwrap();
+        assert_eq!(
+            InstructionSet::new(&ast.root).unwrap().instructions,
+            vec![
+                Val(Bool(true)),
+                GotoIf(Mark(0)), // success path
+                Val(Bool(false)),
+                Or,
+                Label(Mark(0)),
+            ],
+        );
+    }
+    #[test]
+    fn test_unary_op_instruction_set() {
+        let ast = Ast::from_str("!true").unwrap();
+        assert_eq!(
+            InstructionSet::new(&ast.root).unwrap().instructions,
+            vec![Val(Bool(true)), Not],
+        );
+        let ast = Ast::from_str("+1").unwrap();
+        assert_eq!(
+            InstructionSet::new(&ast.root).unwrap().instructions,
+            vec![Val(Num(1.)), Plus],
+        );
+        let ast = Ast::from_str("-1").unwrap();
+        assert_eq!(
+            InstructionSet::new(&ast.root).unwrap().instructions,
+            vec![Val(Num(1.)), Minus],
+        );
+    }
+    #[test]
+    fn test_while_instruction_set() {
+        let ast = Ast::from_str("while(a < 2) { a = a + 1; }").unwrap();
+        assert_eq!(
+            InstructionSet::new(&ast.root).unwrap().instructions,
+            vec![
+                Goto(Mark(0)),
+                Label(Mark(1)), // block instructions
+                NewStack,
+                Val(Num(1.)),
+                Load("a".into()),
+                Add,
+                Store("a".into()),
+                DelStack,
+                Label(Mark(0)),     // condition instructions
+                Val(Num(2.)),
+                Load("a".into()),
+                LessThan,
+                GotoIf(Mark(1)),
             ],
         );
     }

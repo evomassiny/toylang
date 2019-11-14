@@ -90,8 +90,6 @@ pub enum BinaryOp {
     Comparison(ComparisonOp),
     /// Logical operation
     Logical(LogicalOp),
-    /// Assignation
-    Assign,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -111,14 +109,14 @@ pub enum FlatExp {
     /// Call a function with some values
      /// consumes `n` expression => one for the identifier + one for each function argument
     FlatCall(usize),
-    ///// consumes `n` expression =>  one for each function argument
-    //FlatCall(String, usize),
     /// Repeatedly run an expression 
     /// while the conditional expression resolves to true
     /// consumes 2 expressions => the condition, the block
     FlatWhileLoop,
     /// Load a value from a reference (eg a variable name)
     FlatLocal(String),
+    /// Store a value into a reference (eg a variable name)
+    FlatAssign(String),
     /// An If expression with its condition, 
     /// the block expressed when the condition holds true,
     /// and optionaly the block expressed when it doesn't
@@ -173,6 +171,7 @@ pub fn parse_flat_expressions(tokens: &[Token]) -> Result<Vec<FlatExp>, ParsingE
             else if let Some(exp) = patterns::match_return(&unparsed_tokens[idx..]) { exp }
             else if let Some(exp) = patterns::match_function_call(&unparsed_tokens[idx..]) { exp }
             else if let Some(exp) = patterns::match_semi_colomn_fenced(&unparsed_tokens[idx..]) { exp }
+            else if let Some(exp) = patterns::match_assign(&unparsed_tokens[idx..]) { exp }
             else if let Some(exp) = patterns::match_binary_op(&unparsed_tokens[idx..]) { exp }
             else if let Some(exp) = patterns::match_parenthesis_fenced(&unparsed_tokens[idx..]) { exp }
             else if let Some(exp) = patterns::match_unary_op(&unparsed_tokens[idx..]) { exp }

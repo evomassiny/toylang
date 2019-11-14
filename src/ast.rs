@@ -29,6 +29,8 @@ pub enum Expr {
     WhileLoop(Box<Expr>, Box<Expr>),
     /// Load a value from a reference (eg a variable name)
     Local(String),
+    /// Store a value into a reference (eg a variable name)
+    Assign(String, Box<Expr>),
     /// An If expression with its condition, 
     /// the block expressed when the condition holds true,
     /// and optionaly the block expressed when it doesn't
@@ -52,6 +54,7 @@ impl Expr {
             Call(_id, exprs) => exprs.len() + 1,
             WhileLoop(..) => 2,
             Local(_) => 0,
+            Assign(..) => 1,
             If(_cond, _true_block, false_block) => {
                 if false_block.is_some() { 3 } else { 2 }
             } ,
@@ -81,6 +84,12 @@ impl Expr {
             },
             Const(_) => None,
             Block(exprs) => Some(exprs.get(idx)?),
+            Assign(_name, e) => {
+                match idx {
+                    0 => Some(e.as_ref()),
+                    _ => None,
+                }
+            },
             Call(id, args) => {
                 match idx {
                     0 => Some(id.as_ref()),
@@ -160,6 +169,13 @@ impl Ast {
                     let exp = exp_stack.pop()?;
                     exp_stack.push(
                         UnaryOp(unary_op, Box::new(exp))
+                    );
+                },
+                // pop the right hand of the assignation
+                FlatAssign(name) => {
+                    let exp = exp_stack.pop()?;
+                    exp_stack.push(
+                        Assign(name, Box::new(exp))
                     );
                 },
                 // push the Const
