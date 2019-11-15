@@ -317,7 +317,7 @@ pub fn match_function_call(tokens: &[Option<&Token>]) -> Option<(FlatExp, Vec<us
     //let name: String;
     // match identifier
     match tokens[0] {
-        Some(&Token { kind: Identifier(ref id), ..}) => {
+        Some(&Token { kind: Identifier(_), ..}) => {
             //consumed_tokens.push(0);
             //name = id.into();
             sub_expr_count += 1;
@@ -545,6 +545,7 @@ pub fn match_let(tokens: &[Option<&Token>]) -> Option<(FlatExp, Vec<usize>)> {
     Some((FlatLetDecl(name, 1), vec![0, 1, 2]))
 }
 
+#[allow(unused_must_use)]
 mod test {
     use crate::patterns;
     use crate::tokens::Token;

@@ -193,6 +193,11 @@ impl <'inst> Executor <'inst> {
                 let right_hand = self.pop_value().ok_or(exec_error!("Value stack empty"))?;
                 self.push_value(Value::Bool((&left_hand).into() || (&right_hand).into()));
             },
+            Add => {
+                let left_hand = self.pop_value().ok_or(exec_error!("Value stack empty"))?;
+                let right_hand = self.pop_value().ok_or(exec_error!("Value stack empty"))?;
+                self.push_value(left_hand + right_hand);
+            },
 
             _ => {},
         }

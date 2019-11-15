@@ -47,7 +47,7 @@ impl Compiler {
             // at this point, all sub-expressions were already been solved
             // put them in a dedicated Vector, in the correct order
             let mut sub_instructions = Vec::new();
-            for i in 0..sub_expr_count {
+            for _ in 0..sub_expr_count {
                 sub_instructions.push(instructions.pop()?);
             }
             // Build the intruction set needed to evaluate the node expression

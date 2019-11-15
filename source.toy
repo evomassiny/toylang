@@ -6,6 +6,11 @@ function foo(b, t) {
 }
 
 let a = 22;
-let X = 0;
 let c = foo(a, x);
-c
+let X = 100;
+
+let keep_running = true;
+while (keep_running) {
+    keep_running = false;
+}
+X
