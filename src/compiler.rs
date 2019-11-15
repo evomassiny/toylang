@@ -14,7 +14,6 @@ impl Compiler {
     /// an intermediate representation of the actual Instruction set
     /// with unsolved address (labels)
     pub fn preprocess(expression: &Expr) -> Option<Vec<PreInstruction>> {
-        use PreInstruction::*;
         let mut instructions: Vec<Vec<PreInstruction>> = Vec::new();
         // traverse the AST
         // and build an instructions list
@@ -101,7 +100,8 @@ impl Compiler {
 
         // build the actual instructions
         let mut instructions: Vec<Instruction> = Vec::new();
-        for pre_instruction in pre_instructions {
+        let final_idx = pre_instructions.len() -1;
+        for (i, pre_instruction) in pre_instructions.into_iter().enumerate() {
             match pre_instruction {
                 PreInstruction::Goto(label) => {
                     let offset = label_to_offset.get(&label)?;
@@ -113,7 +113,6 @@ impl Compiler {
                 },
                 PreInstruction::AddrLabel(_) => {;},
                 PreInstruction::NewRef(s) => instructions.push(NewRef(s)),
-                PreInstruction::Ref(s) => instructions.push(Ref(s)),
                 PreInstruction::Load(s) => instructions.push(Load(s)),
                 PreInstruction::Store(s) => instructions.push(Store(s)),
                 PreInstruction::Val(pre_val) => {
@@ -136,8 +135,14 @@ impl Compiler {
                 PreInstruction::PushToNext(n) => instructions.push(PushToNext(n)),
                 PreInstruction::NewStack => instructions.push(NewStack),
                 PreInstruction::ClearStack => instructions.push(ClearStack),
-                PreInstruction::DelStack => instructions.push(DelStack),
-
+                PreInstruction::DelStack => {
+                    if i != final_idx { 
+                        // don't delete the root stack, we will use it to evaluate the
+                        // return value of a whole script
+                        instructions.push(DelStack);
+                    }
+                },
+                // binary op
                 PreInstruction::Add => instructions.push(Add),
                 PreInstruction::Div => instructions.push(Div),
                 PreInstruction::Sub => instructions.push(Sub),
@@ -152,6 +157,7 @@ impl Compiler {
                 PreInstruction::LessThanOrEqual => instructions.push(LessThanOrEqual),
                 PreInstruction::And => instructions.push(And),
                 PreInstruction::Or => instructions.push(Or),
+                // unary op
                 PreInstruction::Minus => instructions.push(Minus),
                 PreInstruction::Plus => instructions.push(Plus),
                 PreInstruction::Not => instructions.push(Not),

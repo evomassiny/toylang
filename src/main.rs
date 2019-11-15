@@ -15,6 +15,7 @@ mod compiler;
 mod executor;
 use ast::Ast;
 use compiler::Compiler;
+use executor::Executor;
 
 
 fn main() -> std::io::Result<()> {
@@ -30,8 +31,12 @@ fn main() -> std::io::Result<()> {
     let ast = Ast::from_str(&src).unwrap();
     // Compile into instructions
     let instructions = Compiler::compile(&ast.root).unwrap();
-    dbg!(instructions);
-
+    // execute the instructions
+    for (i, inst) in instructions.iter().enumerate() {
+        println!("{:5} {:?}", i, inst);
+    }
+    let mut executor = Executor::from_instructions(&instructions);
+    dbg!(executor.execute());
     Ok(())
 }
 

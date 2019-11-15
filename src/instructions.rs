@@ -16,15 +16,28 @@ pub enum Value {
     Undefined,
 }
 
+impl Into<bool> for &Value {
+    fn into(self) -> bool {
+        use Value::*;
+        match *self {
+            Str(ref s) => !s.is_empty(),
+            Num(n) => n > 0., // 
+            Bool(b) => b,
+            Function(n) => true,
+            Null | Undefined => false,
+        }
+    }
+}
+
 #[derive(Debug,Clone,PartialEq)]
 pub enum Instruction {
-    // jump
+    /// jump to an address
     Goto(usize),
+    /// pop a value, cast it to `bool`, if it's true, jump to the address,
+    /// in any cases, push the value back to stack
     GotoIf(usize),
-    Label(usize),
-    // Variable bindings
+    /// Create a new variable binding
     NewRef(String), 
-    Ref(String), 
     Load(String),
     /// pop the stack and store the value into the variable pointed by `String`
     /// if the stack is empty, store `Value::Undefined`
@@ -33,9 +46,9 @@ pub enum Instruction {
     Val(Value),
     // Arguments and return value
     /// Call a function
-    FnCall, // doesn't need to push a new stack, but must create a new environnement
+    FnCall, // pop stack, push it to PC stack
     /// Exit a function
-    FnRet,  // doesn't need to pop a stack, but must delete the last environnement
+    FnRet,  // pop PC stack
     // stack machine states
     /// move the `n` last elements of the current stack to a passthrough buffer
     PushToNext(usize),

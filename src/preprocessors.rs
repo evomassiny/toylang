@@ -46,7 +46,6 @@ pub enum PreInstruction {
     AddrLabel(Label),
     // Variable bindings
     NewRef(String), 
-    Ref(String), 
     Load(String),
     /// pop the stack and store the value into the variable pointed by `String`
     /// if the stack is empty, store `Value::Undefined`
@@ -135,7 +134,7 @@ pub fn preprocess_return(mut sub_instructions: Vec<Vec<PreInstruction>>) -> Opti
 ///     ClearStack
 ///     <expr_b>
 ///     DelStack
-pub fn preprocess_block(mut sub_instructions: Vec<Vec<PreInstruction>>) -> Option<Vec<PreInstruction>> {
+pub fn preprocess_block(sub_instructions: Vec<Vec<PreInstruction>>) -> Option<Vec<PreInstruction>> {
     let mut instructions: Vec<PreInstruction> = Vec::new();
     instructions.push(NewStack);
     for (i, sub_inst) in sub_instructions.into_iter().enumerate() {
@@ -176,8 +175,8 @@ pub fn preprocess_if(mut sub_instructions: Vec<Vec<PreInstruction>>, label_count
     // false block
     if let Some(false_block) = false_block {
         instructions.extend(false_block);
-        instructions.push(Goto(end));
     }
+    instructions.push(Goto(end));
     // true block
     instructions.push(AddrLabel(true_block_label));
     instructions.extend(true_block);
@@ -470,7 +469,7 @@ pub fn preprocess_while(mut sub_instructions: Vec<Vec<PreInstruction>>, label_co
 /// * `preprocess_comparison_op`
 /// * `preprocess_logical_op`
 /// for details
-pub fn preprocess_binary_op(op: &BinaryOp, mut sub_instructions: Vec<Vec<PreInstruction>>, label_counter: &mut usize) -> Option<Vec<PreInstruction>> {
+pub fn preprocess_binary_op(op: &BinaryOp, sub_instructions: Vec<Vec<PreInstruction>>, label_counter: &mut usize) -> Option<Vec<PreInstruction>> {
     match op {
         Numerical(num_op) => preprocess_numerical_op(num_op, sub_instructions),
         Comparison(comp_op) => preprocess_comparison_op(comp_op, sub_instructions),
@@ -487,6 +486,24 @@ mod test {
 
     #[test]
     fn test_if_instruction_set() {
+        let ast = Ast::from_str(r#"
+        if (true) {
+          "true_block";
+        } 
+        "#).unwrap();
+        assert_eq!(
+            Compiler::preprocess(&ast.root).unwrap(),
+			vec![
+                Val(Bool(true)),
+                GotoIf(0),
+                Goto(1),
+                AddrLabel(0),
+                NewStack,
+                Val(Str("true_block".into())),
+                DelStack,
+                AddrLabel(1),
+            ],
+		);
         let ast = Ast::from_str(r#"
         if (true) {
           "true_block";
@@ -567,6 +584,17 @@ mod test {
                 Load("b".into()),
                 Load("a".into()),
                 PushToNext(2),
+                Load("foo".into()),
+                FnCall,
+            ],
+        );
+        // test with one arg
+        let ast = Ast::from_str("foo(a)").unwrap();
+        assert_eq!(
+            Compiler::preprocess(&ast.root).unwrap(),
+            vec![
+                Load("a".into()),
+                PushToNext(1),
                 Load("foo".into()),
                 FnCall,
             ],

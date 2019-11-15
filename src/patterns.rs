@@ -331,18 +331,18 @@ pub fn match_function_call(tokens: &[Option<&Token>]) -> Option<(FlatExp, Vec<us
         _ => return None,
     }
     // iter until match `)`
-    let mut i = 1;
     let mut paren_count = 1;
-    while (i + 1) < tokens.len() {
-        i += 1;
+    let mut i = 2;
+    while i < tokens.len() {
         match tokens[i] {
             Some(&Token { kind: Separator(OpenParen), ..}) => paren_count += 1,
             Some(&Token { kind: Separator(CloseParen), ..}) => {
                 paren_count -= 1;
                 if paren_count == 0 {
                     consumed_tokens.push(i);
-                    // one comma means 2 arguments
-                    if sub_expr_count > 1 { sub_expr_count += 1; }
+                    // if the close parenthesis was not direcly after the open 
+                    // parenthesis, assume at least one expression exists
+                    if i > 2 { sub_expr_count += 1; }
                     return Some((FlatCall(sub_expr_count), consumed_tokens));
                 }
             },
@@ -351,8 +351,9 @@ pub fn match_function_call(tokens: &[Option<&Token>]) -> Option<(FlatExp, Vec<us
                 sub_expr_count +=1;
             },
             None => return None,
-            _ => continue,
+            _ => {},
         }
+        i += 1;
     }
     None
 }

@@ -1,11 +1,11 @@
-function foo(a, b) {
-    if (a > b) {
-        return a + b;
+function foo(b, t) {
+    if (b) {
+        return b;
     }
-    return n;
+    return true;
 }
 
-let i = 0;
-while ((i < 12) &&  true) {
-    foo(i, i* 25);
-}
+let a = 22;
+let X = 0;
+let c = foo(a, x);
+c
