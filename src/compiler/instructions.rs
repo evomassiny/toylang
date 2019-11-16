@@ -54,18 +54,3 @@ pub enum Instruction {
     Plus,
     Not,
 }
-
-impl Into<bool> for &Value {
-    fn into(self) -> bool {
-        use Value::*;
-        match *self {
-            Str(ref s) => !s.is_empty(),
-            Num(n) => n > 0., // 
-            Bool(b) => b,
-            Function(_) => true,
-            NaN => false,
-            Null | Undefined => false,
-        }
-    }
-}
-

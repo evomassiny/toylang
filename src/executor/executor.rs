@@ -124,8 +124,8 @@ impl <'inst> Executor <'inst> {
             },
             GotoIf(addr) => {
                 // cast top of the stack as bool
-                let val_as_bool: bool = self.last_value().ok_or(exec_error!("Empty stack"))?.into();
-                if val_as_bool {
+                let value = self.last_value().ok_or(exec_error!("Empty stack"))?;
+                if value.into() {
                     self.goto(addr);
                     return Ok(ExecStatus::Running);
                 } 
@@ -192,10 +192,41 @@ impl <'inst> Executor <'inst> {
                 let right_hand = self.pop_value().ok_or(exec_error!("Value stack empty"))?;
                 self.push_value(Value::Bool((&left_hand).into() || (&right_hand).into()));
             },
+            // arithemic operations
             Add => {
                 let left_hand = self.pop_value().ok_or(exec_error!("Value stack empty"))?;
                 let right_hand = self.pop_value().ok_or(exec_error!("Value stack empty"))?;
                 self.push_value(left_hand + right_hand);
+            },
+            Sub => {
+                let left_hand = self.pop_value().ok_or(exec_error!("Value stack empty"))?;
+                let right_hand = self.pop_value().ok_or(exec_error!("Value stack empty"))?;
+                self.push_value(left_hand - right_hand);
+            },
+            Mul => {
+                let left_hand = self.pop_value().ok_or(exec_error!("Value stack empty"))?;
+                let right_hand = self.pop_value().ok_or(exec_error!("Value stack empty"))?;
+                self.push_value(left_hand * right_hand);
+            },
+            Div => {
+                let left_hand = self.pop_value().ok_or(exec_error!("Value stack empty"))?;
+                let right_hand = self.pop_value().ok_or(exec_error!("Value stack empty"))?;
+                self.push_value(left_hand / right_hand);
+            },
+            Mod => {
+                let left_hand = self.pop_value().ok_or(exec_error!("Value stack empty"))?;
+                let right_hand = self.pop_value().ok_or(exec_error!("Value stack empty"))?;
+                self.push_value(left_hand % right_hand);
+            },
+            Pow => {
+                let left_hand = self.pop_value().ok_or(exec_error!("Value stack empty"))?;
+                let right_hand = self.pop_value().ok_or(exec_error!("Value stack empty"))?;
+                self.push_value(left_hand.pow(&right_hand));
+            },
+
+            Not => {
+                let value = self.pop_value().ok_or(exec_error!("Value stack empty"))?;
+                self.push_value(!value);
             },
 
             _ => {},
