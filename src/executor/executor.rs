@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use crate::ast::Expr;
-use crate::instructions::{Value,Instruction};
-use crate::compiler::Compiler;
+use crate::compiler::{Compiler,Instruction};
+use crate::builtins::Value;
 
 #[derive(Debug)]
 pub struct ExecutionError {

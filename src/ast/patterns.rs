@@ -1,4 +1,4 @@
-use crate::parser::{
+use crate::ast::parser::{
     FlatExp,
     FlatExp::*,
     Const,
@@ -9,7 +9,7 @@ use crate::parser::{
     LogicalOp,
     NumericalOp,
 };
-use crate::tokens::{
+use crate::ast::tokens::{
     TokenKind::*,
     Token,
     LiteralKind::*,
@@ -547,10 +547,10 @@ pub fn match_let(tokens: &[Option<&Token>]) -> Option<(FlatExp, Vec<usize>)> {
 
 #[allow(unused_must_use)]
 mod test {
-    use crate::patterns;
-    use crate::tokens::Token;
-    use crate::lexer::lex;
-    use crate::parser::{
+    use crate::ast::patterns;
+    use crate::ast::tokens::Token;
+    use crate::ast::lexer::lex;
+    use crate::ast::parser::{
         FlatExp,
         Const,
         UnaryOp,

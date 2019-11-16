@@ -1,7 +1,7 @@
 use std::error::Error;
 use std::fmt;
-use crate::patterns;
-use crate::tokens::{
+use crate::ast::patterns;
+use crate::ast::tokens::{
     TokenKind,
     Token,
 };
@@ -207,8 +207,8 @@ pub fn parse_flat_expressions(tokens: &[Token]) -> Result<Vec<FlatExp>, ParsingE
 
 
 mod test {
-    use crate::lexer::lex;
-    use crate::parser::{
+    use crate::ast::lexer::lex;
+    use crate::ast::parser::{
         FlatExp,
         Const,
         BinaryOp::*,

@@ -1,6 +1,6 @@
 use std::error::Error;
-use crate::lexer::lex;
-use crate::parser::{
+use crate::ast::lexer::lex;
+use crate::ast::parser::{
     FlatExp,
     Const,
     UnaryOp,
@@ -8,7 +8,7 @@ use crate::parser::{
     parse_flat_expressions,
     ParsingError,
 };
-use crate::tokens::Token;
+use crate::ast::tokens::Token;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Expr {

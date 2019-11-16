@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 use crate::ast::Expr;
-use crate::preprocessors::{PreValue,PreInstruction};
-use crate::preprocessors as pp;
-use crate::instructions::{Instruction,Value};
+use crate::compiler::preprocessors::{PreValue,PreInstruction};
+use crate::compiler::preprocessors as pp;
+use crate::compiler::instructions::Instruction;
+use crate::builtins::Value;
 
 
 #[derive(Debug)]

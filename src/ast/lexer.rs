@@ -1,7 +1,7 @@
 use std::error::Error;
 use std::fmt;
 use regex::Regex;
-use crate::tokens::{
+use crate::ast::tokens::{
     TokenKind,
     Token,
     LiteralKind,
@@ -260,12 +260,12 @@ pub fn lex(src: &str) -> Result<Vec<Token>, Box<dyn Error>> {
 }
 
 mod test {
-    use crate::tokens::SeparatorKind::*;
-    use crate::tokens::TokenKind::*;
-    use crate::tokens::KeywordKind::*;
-    use crate::tokens::OperatorKind::*;
-    use crate::tokens::LiteralKind::*;
-    use crate::lexer::lex;
+    use crate::ast::tokens::SeparatorKind::*;
+    use crate::ast::tokens::TokenKind::*;
+    use crate::ast::tokens::KeywordKind::*;
+    use crate::ast::tokens::OperatorKind::*;
+    use crate::ast::tokens::LiteralKind::*;
+    use crate::ast::lexer::lex;
 
     #[test]
     fn lex_literals() {

@@ -4,15 +4,11 @@ use std::fs::File;
 use std::io::prelude::*;
 use std::env::args;
 
-mod lexer;
-mod tokens;
-mod patterns;
-mod parser;
-mod ast;
-mod preprocessors;
-mod instructions;
 mod compiler;
 mod executor;
+mod ast;
+mod builtins;
+
 use ast::Ast;
 use compiler::Compiler;
 use executor::Executor;
