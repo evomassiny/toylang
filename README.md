@@ -1,18 +1,16 @@
 # Toylang
 This a toy programing language, **utterly useless**.
 
-I'm using it to experiment parser designs.
+I'm using it to experiment parser, compiler and interpreter designs (as I don't know much about it).
 
-It's only a parser, It cannot execute anything!
-
-To test the parser you can run: 
+To test the interpreter you can run: 
 ```
-cargo run -- ./source.toy
+cargo run -- ./source.js
 ```
 
 The supported syntaxe is a small subset of the javascript one:
 * keywords:
-    * `function` (only support named function)
+    * `function` (only supports named function)
     * `while`
     * `if`
     * `else`
@@ -28,3 +26,6 @@ The supported syntaxe is a small subset of the javascript one:
     * `{ }`
 
 (see ./source.toy for an example)
+
+# Credits
+This repo takes huge inspirations from the [**boa**](https://github.com/jasonwilliams/boa) interpreter.

@@ -206,8 +206,10 @@ pub fn parse_flat_expressions(tokens: &[Token]) -> Result<Vec<FlatExp>, ParsingE
 }
 
 
+#[cfg(test)]
 mod test {
     use crate::ast::lexer::lex;
+
     use crate::ast::parser::{
         FlatExp,
         Const,

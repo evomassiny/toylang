@@ -477,6 +477,7 @@ pub fn preprocess_binary_op(op: &BinaryOp, sub_instructions: Vec<Vec<PreInstruct
     }
 }
     
+#[cfg(test)]
 mod test {
     use crate::ast::Ast;
     use crate::compiler::compiler::Compiler;

@@ -259,6 +259,7 @@ pub fn lex(src: &str) -> Result<Vec<Token>, Box<dyn Error>> {
     Ok(tokens)
 }
 
+#[cfg(test)]
 mod test {
     use crate::ast::tokens::SeparatorKind::*;
     use crate::ast::tokens::TokenKind::*;

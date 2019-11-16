@@ -1,6 +1,5 @@
 use std::collections::HashMap;
-use crate::ast::Expr;
-use crate::compiler::{Compiler,Instruction};
+use crate::compiler::Instruction;
 use crate::builtins::Value;
 
 #[derive(Debug)]

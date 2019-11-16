@@ -3,7 +3,6 @@ use crate::ast::parser::{
     FlatExp::*,
     Const,
     UnaryOp,
-    BinaryOp,
     BinaryOp::*,
     ComparisonOp,
     LogicalOp,
@@ -545,7 +544,7 @@ pub fn match_let(tokens: &[Option<&Token>]) -> Option<(FlatExp, Vec<usize>)> {
     Some((FlatLetDecl(name, 1), vec![0, 1, 2]))
 }
 
-#[allow(unused_must_use)]
+#[cfg(test)]
 mod test {
     use crate::ast::patterns;
     use crate::ast::tokens::Token;

@@ -112,7 +112,7 @@ impl Compiler {
                     let offset = label_to_offset.get(&label)?;
                     instructions.push(GotoIf(*offset));
                 },
-                PreInstruction::AddrLabel(_) => {;},
+                PreInstruction::AddrLabel(_) => {},
                 PreInstruction::NewRef(s) => instructions.push(NewRef(s)),
                 PreInstruction::Load(s) => instructions.push(Load(s)),
                 PreInstruction::Store(s) => instructions.push(Store(s)),
