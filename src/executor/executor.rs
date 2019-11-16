@@ -122,10 +122,15 @@ impl <'inst> Executor <'inst> {
                 self.goto(addr);
                 return Ok(ExecStatus::Running);
             },
-            GotoIf(addr) => {
-                // cast top of the stack as bool
-                let value = self.last_value().ok_or(exec_error!("Empty stack"))?;
-                if value.into() {
+            GotoIf(addr) => { // Does not consume the value but cast it as a bool
+                // pop stack, and cast as bool
+                let value_bool: bool = (
+                        &self.pop_value()
+                        .ok_or(exec_error!("Empty stack"))?
+                    ).into();
+                // re-insert the boolean back onto the stackœ:w
+                self.push_value(Value::Bool(value_bool));
+                if value_bool {
                     self.goto(addr);
                     return Ok(ExecStatus::Running);
                 } 
@@ -266,6 +271,39 @@ mod tests {
     }
 
     #[test]
+    fn test_boolean_cast() {
+        assert_eq!(exec("0 && true").unwrap(), Some(Bool(false)));
+        assert_eq!(exec("0.1 && true").unwrap(), Some(Bool(true)));
+        assert_eq!(exec(r#" "" && true"#).unwrap(), Some(Bool(false)));
+        assert_eq!(exec(r#" "content" && true"#).unwrap(), Some(Bool(true)));
+        assert_eq!(exec(" null && true").unwrap(), Some(Bool(false)));
+        assert_eq!(exec(" undefined && true").unwrap(), Some(Bool(false)));
+        assert_eq!(exec("function foo(){}; foo && true").unwrap(), Some(Bool(true)));
+    }
+    #[test]
+    fn test_and() {
+        assert_eq!(exec("true && true").unwrap(), Some(Bool(true)));
+        assert_eq!(exec("false && true").unwrap(), Some(Bool(false)));
+        assert_eq!(exec("false && false").unwrap(), Some(Bool(false)));
+        assert_eq!(exec("true && false").unwrap(), Some(Bool(false)));
+        // test shortcut evaluation
+        // if foo() is evaluated, it fails because it's not defined
+        assert_eq!(exec(" false && foo()").unwrap(), Some(Bool(false)));
+        assert!(exec(" true && foo()").is_err()); 
+    }
+    #[test]
+    fn test_or() {
+        assert_eq!(exec("true || true").unwrap(), Some(Bool(true)));
+        assert_eq!(exec("false || true").unwrap(), Some(Bool(true)));
+        assert_eq!(exec("false || false").unwrap(), Some(Bool(false)));
+        assert_eq!(exec("true || false").unwrap(), Some(Bool(true)));
+        // test shortcut evaluation
+        // if foo() is evaluated, it fails because it's not defined
+        assert_eq!(exec(" true || foo()").unwrap(), Some(Bool(true)));
+        assert!(exec("false || foo()").is_err()); 
+    }
+
+    #[test]
     fn test_add() {
         assert_eq!(
             exec("1 + 2").unwrap(),
@@ -281,6 +319,180 @@ mod tests {
             exec(r#" "str" + 2"#).unwrap(),
             Some(Str("str2".into()))
         );
+        assert_eq!(
+            exec(r#" true + 2"#).unwrap(),
+            Some(Num(3.))
+        );
+        assert_eq!(
+            exec(r#" false + 2"#).unwrap(),
+            Some(Num(2.))
+        );
+    }
+    #[test]
+    fn test_sub() {
+        assert_eq!(
+            exec("1 - 2").unwrap(),
+            Some(Num(-1.))
+        );
+        let val: f64 = (&exec("undefined - 2").unwrap().unwrap()).into();
+        assert!(val.is_nan());
+        assert_eq!(
+            exec("null - 2").unwrap(),
+            Some(Num(-2.))
+        );
+        let val: f64 = (&exec(r#" "str" - 2"#).unwrap().unwrap()).into();
+        assert!(val.is_nan());
+        let val: f64 = (&exec(r#"
+        function foo() { return 1; }
+        foo -1
+        "#).unwrap().unwrap()).into();
+        assert!(val.is_nan());
+        assert_eq!(
+            exec(r#" true - 2"#).unwrap(),
+            Some(Num(-1.))
+        );
+        assert_eq!(
+            exec(r#" false - 2"#).unwrap(),
+            Some(Num(-2.))
+        );
+    }
+    #[test]
+    fn test_mul() {
+        assert_eq!(
+            exec("1 * 2").unwrap(),
+            Some(Num(2.))
+        );
+        let val: f64 = (&exec("undefined * 2").unwrap().unwrap()).into();
+        assert!(val.is_nan());
+        assert_eq!(
+            exec("null * 2").unwrap(),
+            Some(Num(0.))
+        );
+        let val: f64 = (&exec(r#" "str" * 2"#).unwrap().unwrap()).into();
+        assert!(val.is_nan());
+        let val: f64 = (&exec(r#"
+        function foo() { return 1; }
+        foo *1
+        "#).unwrap().unwrap()).into();
+        assert!(val.is_nan());
+        assert_eq!(
+            exec(r#" true * 2"#).unwrap(),
+            Some(Num(2.))
+        );
+        assert_eq!(
+            exec(r#" false * 2"#).unwrap(),
+            Some(Num(0.))
+        );
+    }
+    #[test]
+    fn test_div() {
+        assert_eq!(
+            exec("6 / 2").unwrap(),
+            Some(Num(3.))
+        );
+        let val: f64 = (&exec("undefined / 2").unwrap().unwrap()).into();
+        assert!(val.is_nan());
+        assert_eq!(
+            exec("null / 2").unwrap(),
+            Some(Num(0.))
+        );
+        let val: f64 = (&exec(r#" "str" / 2"#).unwrap().unwrap()).into();
+        assert!(val.is_nan());
+        let val: f64 = (&exec(r#"
+        function foo() { return 1; }
+        foo / 1
+        "#).unwrap().unwrap()).into();
+        assert!(val.is_nan());
+        assert_eq!(
+            exec(r#" true / 2"#).unwrap(),
+            Some(Num(0.5))
+        );
+        assert_eq!(
+            exec(r#" false / 2"#).unwrap(),
+            Some(Num(0.))
+        );
+    }
+    #[test]
+    fn test_mod() {
+        assert_eq!(
+            exec("7 % 2").unwrap(),
+            Some(Num(1.))
+        );
+        let val: f64 = (&exec("undefined % 2").unwrap().unwrap()).into();
+        assert!(val.is_nan());
+        assert_eq!(
+            exec("null % 2").unwrap(),
+            Some(Num(0.))
+        );
+        let val: f64 = (&exec(r#" "str" % 2"#).unwrap().unwrap()).into();
+        assert!(val.is_nan());
+        let val: f64 = (&exec(r#"
+        function foo() { return 1; }
+        foo % 1
+        "#).unwrap().unwrap()).into();
+        assert!(val.is_nan());
+        assert_eq!(
+            exec(r#" true % 2"#).unwrap(),
+            Some(Num(1.))
+        );
+        assert_eq!(
+            exec(r#" false % 2"#).unwrap(),
+            Some(Num(0.))
+        );
+    }
+    #[test]
+    fn test_pow() {
+        assert_eq!(
+            exec("7 ** 2").unwrap(),
+            Some(Num(49.))
+        );
+        let val: f64 = (&exec("undefined ** 2").unwrap().unwrap()).into();
+        assert!(val.is_nan());
+        assert_eq!(
+            exec("null ** 2").unwrap(),
+            Some(Num(0.))
+        );
+        let val: f64 = (&exec(r#" "str" ** 2"#).unwrap().unwrap()).into();
+        assert!(val.is_nan());
+        let val: f64 = (&exec(r#"
+        function foo() { return 1; }
+        foo % 1
+        "#).unwrap().unwrap()).into();
+        assert!(val.is_nan());
+        assert_eq!(
+            exec(r#" true ** 2"#).unwrap(),
+            Some(Num(1.))
+        );
+        assert_eq!(
+            exec(r#" false ** 2"#).unwrap(),
+            Some(Num(0.))
+        );
+    }
+
+    #[test]
+    fn test_if() {
+        let val = exec(r#"
+        function test(v) { 
+            if (v) {
+                return true;
+            } else {
+                return false;
+            }
+        }
+        test(true)
+        "#).unwrap();
+        assert_eq!(val, Some(Bool(true)));
+        let val = exec(r#"
+        function test(v) { 
+            if (v) {
+                return true;
+            } else {
+                return false;
+            }
+        }
+        test(false)
+        "#).unwrap();
+        assert_eq!(val, Some(Bool(false)));
     }
 }
 

@@ -292,30 +292,43 @@ pub fn match_block(tokens: &[Option<&Token>]) -> Option<(FlatExp, Vec<usize>)> {
         _ => return None,
     }
     // iter until match `}`
-    let mut i = 0;
+    let mut i = 1;
     let mut block_count = 1;
     let mut sub_expr_count = 0;
-    while (i + 1) < tokens.len() {
-        i += 1;
+    while i  < tokens.len() {
         match tokens[i] {
-            Some(&Token { kind: Separator(OpenBlock), ..}) => {
-                // only count the direct sub-level blocks as subexpressions
-                if block_count == 1 { sub_expr_count += 1; }
-                block_count += 1;
-            },
-            Some(&Token { kind: Separator(Semicolon), ..}) => {
-                if block_count == 1 { sub_expr_count += 1; }
-            },
-            Some(&Token { kind: Separator(CloseBlock), ..}) => {
-                block_count -= 1;
-                if block_count == 0 {
-                    consumed_tokens.push(i);
-                    return Some((FlatBlock(sub_expr_count), consumed_tokens));
-                }
-            },
             None => return None,
-            _ => continue,
+            Some(token) => {
+                match *token {
+                    Token { kind: Separator(OpenBlock), ..} => block_count += 1,
+                    // count the number of sub-expressions
+                    Token { kind: Separator(Semicolon), ..} 
+                        | Token { kind: Keyword(If), ..}
+                        | Token { kind: Keyword(While), ..}
+                        | Token { kind: Keyword(Function), ..}
+                        => {
+                        if block_count == 1 {
+                            sub_expr_count += 1; 
+                        }
+                    },
+                    Token { kind: Separator(CloseBlock), ..} => {
+                        block_count -= 1;
+                        //  If we reached the end of the block
+                        if block_count == 0 {
+                            // if we skip several token it must 
+                            // be at least one sub-expression (eg: {{stuff;}})
+                            if sub_expr_count == 0 && i > 2 {
+                                sub_expr_count += 1;
+                            }
+                            consumed_tokens.push(i);
+                            return Some((FlatBlock(sub_expr_count), consumed_tokens));
+                        }
+                    },
+                    _ => {}
+                }
+            }
         }
+        i += 1;
     }
     None
 }
@@ -578,6 +591,30 @@ mod test {
         assert_eq!(
             patterns::match_block(&unparsed_tokens),
             Some((FlatExp::FlatBlock(1), vec![0_usize, 6])),
+            "Failed to match block pattern"
+        );
+        // test sub expression count: case `if`
+        let tokens = lex("{if (true) {} else {}}").unwrap();
+        let unparsed_tokens: Vec<Option<&Token>> = tokens.iter().map(|t| Some(t)).collect();
+        assert_eq!(
+            patterns::match_block(&unparsed_tokens),
+            Some((FlatExp::FlatBlock(1), vec![0_usize, 10])),
+            "Failed to match block pattern"
+        );
+        // test sub expression count: case `while`
+        let tokens = lex("{ while (true) {} }").unwrap();
+        let unparsed_tokens: Vec<Option<&Token>> = tokens.iter().map(|t| Some(t)).collect();
+        assert_eq!(
+            patterns::match_block(&unparsed_tokens),
+            Some((FlatExp::FlatBlock(1), vec![0_usize, 7])),
+            "Failed to match block pattern"
+        );
+        // test sub expression count: case `function`
+        let tokens = lex("{ function a() {} }").unwrap();
+        let unparsed_tokens: Vec<Option<&Token>> = tokens.iter().map(|t| Some(t)).collect();
+        assert_eq!(
+            patterns::match_block(&unparsed_tokens),
+            Some((FlatExp::FlatBlock(1), vec![0_usize, 7])),
             "Failed to match block pattern"
         );
         // test 2 blocks

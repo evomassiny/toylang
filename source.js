@@ -12,4 +12,12 @@ let flag = 100;
 while (flag) {
     flag = flag - 1;
 }
-flag
+
+function test(v) { 
+    if (v) {
+        return true;
+    } else {
+        return false;
+    }
+}
+test(true)
