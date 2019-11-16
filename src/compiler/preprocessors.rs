@@ -34,6 +34,8 @@ impl PreValue {
             Const::Str(ref s) => Self::Str(s.clone()),
             Const::Num(n) => Self::Num(n),
             Const::Bool(b) => Self::Bool(b),
+            Const::Null => Self::Null,
+            Const::Undefined => Self::Undefined,
         };
     }
 }

@@ -248,15 +248,27 @@ pub fn match_unary_op(tokens: &[Option<&Token>]) -> Option<(FlatExp, Vec<usize>)
 /// Match from the first item of `token`:
 /// * A string litteral
 /// * A number 
-/// * A bollean litteral
+/// * A boolean litteral
+/// * `null`
+/// * `undefined`
 pub fn match_const(tokens: &[Option<&Token>]) -> Option<(FlatExp, Vec<usize>)> {
     if tokens.len() < 1 { return None; }
-    if let Some(Token { kind: Literal(literal), ..} ) = tokens[0] {
-        match literal {
-            Boolean(value) => return Some((FlatConst(Const::Bool(*value)),vec![0])),
-            Numeric(value) => return Some((FlatConst(Const::Num(*value)), vec![0])),
-            Str(value) => return Some((FlatConst(Const::Str(value.into())), vec![0])),
-        }
+    match tokens[0] {
+        Some(Token { kind: Literal(literal), ..} ) => {
+            match literal {
+                Boolean(value) => return Some((FlatConst(Const::Bool(*value)),vec![0])),
+                Numeric(value) => return Some((FlatConst(Const::Num(*value)), vec![0])),
+                Str(value) => return Some((FlatConst(Const::Str(value.into())), vec![0])),
+            }
+        },
+        Some(Token { kind: Keyword(keyword), ..} ) => {
+            match keyword {
+                Null => return Some((FlatConst(Const::Null),vec![0])),
+                Undefined => return Some((FlatConst(Const::Undefined), vec![0])),
+                _ => {}
+            }
+        },
+        _ => {}
     }
     None
 }
@@ -851,6 +863,26 @@ mod test {
                 vec![0]
             )),
             "Failed to match const literal"
+        );
+        let tokens = lex("null").unwrap();
+        let unparsed_tokens: Vec<Option<&Token>> = tokens.iter().map(|t| Some(t)).collect();
+        assert_eq!(
+            patterns::match_const(&unparsed_tokens),
+            Some((
+                FlatExp::FlatConst(Const::Null),
+                vec![0]
+            )),
+            "Failed to match const literal null"
+        );
+        let tokens = lex("undefined").unwrap();
+        let unparsed_tokens: Vec<Option<&Token>> = tokens.iter().map(|t| Some(t)).collect();
+        assert_eq!(
+            patterns::match_const(&unparsed_tokens),
+            Some((
+                FlatExp::FlatConst(Const::Undefined),
+                vec![0]
+            )),
+            "Failed to match const literal undefined"
         );
     }
 

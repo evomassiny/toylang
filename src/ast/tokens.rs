@@ -14,6 +14,10 @@ pub enum KeywordKind {
     Return,
     /// The `while` keyword
     While,
+    /// The 'null' keyword
+    Null,
+    /// The 'undefined' keyword
+    Undefined,
 }
 
 /// Punctuation

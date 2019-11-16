@@ -16,6 +16,8 @@ The supported syntaxe is a small subset of the javascript one:
     * `else`
     * `return`
     * `let`
+    * `null`
+    * `undefined`
 * operators:
     * `+ - * / ** %`
     * `> < >= <= ==`
@@ -24,8 +26,12 @@ The supported syntaxe is a small subset of the javascript one:
     * `;` for expressions
     * `( )` for sub-expressions
     * `{ }`
+* litterals:
+    * booleans
+    * float/integers
+    * strings
 
-(see ./source.toy for an example)
+(see ./source.js for an example)
 
 # Credits
 This repo takes huge inspirations from the [**boa**](https://github.com/jasonwilliams/boa) interpreter.

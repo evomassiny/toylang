@@ -246,3 +246,41 @@ impl <'inst> Executor <'inst> {
         Ok(self.pop_value())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::ast::Ast;
+    use crate::compiler::Compiler;
+    use crate::executor::{Executor,ExecutionError};
+    use crate::builtins::Value;
+    use Value::*;
+
+    fn exec(src: &str) -> Result<Option<Value>, ExecutionError> {
+        // parse the ast
+        let ast = Ast::from_str(&src).unwrap();
+        // Compile into instructions
+        let instructions = Compiler::compile(&ast.root).unwrap();
+        // execute the instructions
+        let mut executor = Executor::from_instructions(&instructions);
+        executor.execute()
+    }
+
+    #[test]
+    fn test_add() {
+        assert_eq!(
+            exec("1 + 2").unwrap(),
+            Some(Num(3.))
+        );
+        let val: f64 = (&exec("undefined + 2").unwrap().unwrap()).into();
+        assert!(val.is_nan());
+        assert_eq!(
+            exec("null + 2").unwrap(),
+            Some(Num(2.))
+        );
+        assert_eq!(
+            exec(r#" "str" + 2"#).unwrap(),
+            Some(Str("str2".into()))
+        );
+    }
+}
+

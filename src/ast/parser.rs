@@ -39,6 +39,10 @@ pub enum Const {
     Bool(bool),
     /// A string
     Str(String),
+    /// 'null'
+    Null,
+    /// 'undefined'
+    Undefined,
 }
 
 #[derive(Clone, Debug, PartialEq)]

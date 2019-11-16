@@ -62,7 +62,7 @@ pub fn lex(src: &str) -> Result<Vec<Token>, Box<dyn Error>> {
         static ref BOOLEAN_PATTERN: Regex = Regex::new(r"^(?P<token>true|false)").unwrap();
         static ref KEYWORD_PATTERN: Regex = Regex::new(
             // (\W|$) ensure that the keyword is not followed by any alphanumeric char
-            r"^(?P<token>function|if|let|else|return|while)(\W|$)"
+            r"^(?P<token>function|if|let|else|return|while|undefined|null)(\W|$)"
         ).unwrap();
         static ref NUMERIC_PATTERN: Regex = Regex::new(
             // (\W|$) ensure that the float is not followed by any alphanumeric char
@@ -148,6 +148,8 @@ pub fn lex(src: &str) -> Result<Vec<Token>, Box<dyn Error>> {
         if let Some(caps) = KEYWORD_PATTERN.captures(remaining_src) {
             let keyword_str: &str = caps.name("token").unwrap().as_str();
             let kind = match keyword_str {
+                "null" => Null,
+                "undefined" => Undefined,
                 "function" => Function,
                 "if" => If,
                 "let" => Let,
