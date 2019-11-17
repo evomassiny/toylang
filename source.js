@@ -14,10 +14,10 @@ while (flag) {
 }
 
 function test(v) { 
-    if (v) {
+    if (v == 21) {
         return true;
     } else {
         return false;
     }
 }
-test(true)
+test("21")

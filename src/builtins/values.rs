@@ -28,10 +28,39 @@ pub enum Value {
 use Value::*;
 
 impl Value {
+    /// raise `self` to the power `other`
     pub fn pow(&self, other: &Self) -> Self {
         let self_float: f64 = self.into();
         let other_float: f64 = other.into();
         Num(self_float.powf(other_float))
+    }
+
+    /// "==" operation
+    pub fn is_equal(&self, other: &Self) -> Self {
+        let equality = match (self, other) {
+            (Null, Undefined) 
+                | (Undefined, Null)
+                | (Null, Null) 
+                | (Undefined, Undefined) => true,
+            // at least one is a string
+            (Str(s), o) => s.to_string() == o.to_string(),
+            (s, Str(o)) => s.to_string() == o.to_string(),
+            // at least one is a number
+            (Num(n), o) => {
+                let other_float: f64 = o.into();
+                *n == other_float
+            },
+            (s, Num(n)) => {
+                let self_float: f64 = s.into();
+                *n == self_float
+            },
+            // both are bool
+            (Bool(s), Bool(o)) => *s == *o,
+            (Function(addr_s), Function(addr_o)) => *addr_s == *addr_o,
+            // both are function
+            _ => false
+        };
+        Bool(equality)
     }
 }
 

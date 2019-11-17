@@ -233,6 +233,17 @@ impl <'inst> Executor <'inst> {
                 let value = self.pop_value().ok_or(exec_error!("Value stack empty"))?;
                 self.push_value(!value);
             },
+            // Comparison
+            Equal => {
+                let left_hand = self.pop_value().ok_or(exec_error!("Value stack empty"))?;
+                let right_hand = self.pop_value().ok_or(exec_error!("Value stack empty"))?;
+                self.push_value(left_hand.is_equal(&right_hand));
+            },
+            NotEqual => {
+                let left_hand = self.pop_value().ok_or(exec_error!("Value stack empty"))?;
+                let right_hand = self.pop_value().ok_or(exec_error!("Value stack empty"))?;
+                self.push_value(!left_hand.is_equal(&right_hand));
+            },
 
             _ => {},
         }
@@ -493,6 +504,19 @@ mod tests {
         test(false)
         "#).unwrap();
         assert_eq!(val, Some(Bool(false)));
+    }
+    #[test]
+    fn test_while() {
+        let val = exec(r#"
+        let run_flag = 100;
+        let counter = 0;
+        while (run_flag) {
+            run_flag = run_flag -1;
+            counter = counter + 1;
+        }
+        counter
+        "#).unwrap();
+        assert_eq!(val, Some(Num(100.)));
     }
 }
 
