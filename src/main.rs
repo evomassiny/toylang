@@ -25,6 +25,7 @@ fn main() -> std::io::Result<()> {
 
 	// build the ast
     let ast = Ast::from_str(&src).unwrap();
+    dbg!(&ast.root);
     // Compile into instructions
     let instructions = Compiler::compile(&ast.root).unwrap();
     // execute the instructions

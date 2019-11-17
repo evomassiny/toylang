@@ -173,10 +173,10 @@ pub fn parse_flat_expressions(tokens: &[Token]) -> Result<Vec<FlatExp>, ParsingE
             else if let Some(exp) = patterns::match_if(&unparsed_tokens[idx..]) { exp }
             else if let Some(exp) = patterns::match_while(&unparsed_tokens[idx..]) { exp }
             else if let Some(exp) = patterns::match_return(&unparsed_tokens[idx..]) { exp }
-            else if let Some(exp) = patterns::match_function_call(&unparsed_tokens[idx..]) { exp }
             else if let Some(exp) = patterns::match_semi_colomn_fenced(&unparsed_tokens[idx..]) { exp }
             else if let Some(exp) = patterns::match_assign(&unparsed_tokens[idx..]) { exp }
             else if let Some(exp) = patterns::match_binary_op(&unparsed_tokens[idx..]) { exp }
+            else if let Some(exp) = patterns::match_function_call(&unparsed_tokens[idx..]) { exp }
             else if let Some(exp) = patterns::match_parenthesis_fenced(&unparsed_tokens[idx..]) { exp }
             else if let Some(exp) = patterns::match_unary_op(&unparsed_tokens[idx..]) { exp }
             else if let Some(exp) = patterns::match_const(&unparsed_tokens[idx..]) { exp }

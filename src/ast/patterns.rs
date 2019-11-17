@@ -981,6 +981,17 @@ mod test {
             "Failed to match binary operation"
         );
 
+        let tokens = lex("f() + f()").unwrap();
+        let unparsed_tokens: Vec<Option<&Token>> = tokens.iter().map(|t| Some(t)).collect();
+        assert_eq!(
+            patterns::match_binary_op(&unparsed_tokens),
+            Some((
+                FlatExp::FlatBinaryOp(Numerical(NumericalOp::Add)),
+                vec![3]
+            )),
+            "Failed to match binary operation"
+        );
+
         let tokens = lex("1-1 * 1").unwrap();
         let unparsed_tokens: Vec<Option<&Token>> = tokens.iter().map(|t| Some(t)).collect();
         assert_eq!(
