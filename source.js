@@ -1,23 +1,8 @@
-function foo(b, t) {
-    if (b) {
-        return b;
+function fib(n) {
+    if (n < 2) {
+        return n;
     }
-    return true;
+    let a = fib(n - 1);
+    return a + fib(n - 2);
 }
-
-let a = 22;
-let c = foo(a, "test");
-
-let flag = 100;
-while (flag) {
-    flag = flag - 1;
-}
-
-function test(v) { 
-    if (v == 21) {
-        return true;
-    } else {
-        return false;
-    }
-}
-test("21")
+fib(16)

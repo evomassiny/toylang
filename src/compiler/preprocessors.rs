@@ -107,7 +107,6 @@ pub fn preprocess_const(c: &Const) -> Option<Vec<PreInstruction>> {
 /// So `return <expr>;` is compiled as:
 ///     <expr>
 ///     PushToNext(1)
-///     DelStack
 ///     FnRet
 pub fn preprocess_return(mut sub_instructions: Vec<Vec<PreInstruction>>) -> Option<Vec<PreInstruction>> {
     let mut instructions = Vec::new();
@@ -122,7 +121,6 @@ pub fn preprocess_return(mut sub_instructions: Vec<Vec<PreInstruction>>) -> Opti
         }
     }
     instructions.push(PushToNext(1));
-    instructions.push(DelStack);
     instructions.push(FnRet);
     Some(instructions)
 }
@@ -247,7 +245,6 @@ pub fn preprocess_call(mut sub_instructions: Vec<Vec<PreInstruction>>) -> Option
 /// So `function id(a, b) { <expr> }` is compiled as:
 ///     Goto(end)       // skip the function block if were not calling it
 ///     AddrLabel(start)    // address of the function
-///     NewStack
 ///     NewRef 'a'      // args
 ///     Store 'a'
 ///     NewRef 'b'
@@ -255,7 +252,6 @@ pub fn preprocess_call(mut sub_instructions: Vec<Vec<PreInstruction>>) -> Option
 ///     <expr>              // the function block instructions
 ///     PreValue(Undefined)    // Return a value no matter what
 ///     PushToNext(1)
-///     DelStack
 ///     FnRet               // quit the function evaluation 
 ///     AddrLabel(end)          // the piece of code that is executed when the function is 
 ///                         // declared
@@ -280,8 +276,6 @@ pub fn preprocess_function_decl(
     instructions.push(Goto(end));
     // set the `start` label here
     instructions.push(AddrLabel(start)); 
-    // create a new stack
-    instructions.push(NewStack); 
     
     // load args
     for arg in args {
@@ -299,10 +293,14 @@ pub fn preprocess_function_decl(
     instructions.extend(block);
 
     // insert a return statement in case none are defined in the block
-    instructions.push(Val(PreValue::Undefined));
-    instructions.push(PushToNext(1));
-    instructions.push(DelStack);
-    instructions.push(FnRet);
+    match instructions.last() {
+        Some(FnRet) => {},
+        _ => {
+            instructions.push(Val(PreValue::Undefined));
+            instructions.push(PushToNext(1));
+            instructions.push(FnRet);
+        },
+    }
     
     // set the end address
     instructions.push(AddrLabel(end)); 
@@ -620,18 +618,32 @@ mod test {
             vec![
                 Goto(1),  // skip function block if we're not calling it
                 AddrLabel(0), // begin address
-                NewStack,
                 NewRef("a".into()), // first arg 
                 Store("a".into()),
                 NewRef("b".into()), // 2nd arg
                 Store("b".into()),
                 Val(Bool(true)), // function block
                 PushToNext(1),   
-                DelStack,
                 FnRet,
+                AddrLabel(1),  // end address
+                Val(Function(0)), // put function address into a `foo` var
+                NewRef("foo".into()),
+                Store("foo".into()),
+            ],
+        );
+        // test automatic "return undefined"
+        let ast = Ast::from_str("function foo(a, b) { }").unwrap();
+        assert_eq!(
+            Compiler::preprocess(&ast.root).unwrap(),
+            vec![
+                Goto(1),  // skip function block if we're not calling it
+                AddrLabel(0), // begin address
+                NewRef("a".into()), // first arg 
+                Store("a".into()),
+                NewRef("b".into()), // 2nd arg
+                Store("b".into()),
                 Val(Undefined),  // backup return call
                 PushToNext(1),
-                DelStack,
                 FnRet,
                 AddrLabel(1),  // end address
                 Val(Function(0)), // put function address into a `foo` var

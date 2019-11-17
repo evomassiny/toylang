@@ -1,15 +1,26 @@
 use std::collections::HashMap;
 use crate::compiler::Instruction;
 use crate::builtins::Value;
+use crate::executor::contexts::{
+    Context,
+    Scope,
+    ScopeKind,
+    ContextError,
+};
 
 #[derive(Debug)]
 pub struct ExecutionError {
-    msg: String    
+    pub msg: String    
 }
 impl std::error::Error for ExecutionError {}
 impl std::fmt::Display for ExecutionError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "{}", self.msg,)
+    }
+}
+impl From<ContextError> for ExecutionError {
+    fn from(err: ContextError) -> Self {
+        Self { msg: err.msg }
     }
 }
 macro_rules! exec_error {
@@ -25,52 +36,52 @@ pub enum ExecStatus {
 
 pub struct Executor<'inst> {
     pub instructions: &'inst [Instruction],
-    value_stacks: Vec<Vec<Value>>,
+    context: Context,
     passthrough: Vec<Value>,
     execution_pointers: Vec<usize>,
-    bindings: Vec<HashMap<String, Value>>,
 }
 
 impl <'inst> Executor <'inst> { 
     pub fn from_instructions(instructions: &'inst [Instruction]) -> Self {
         Self { 
             instructions: instructions,
-            value_stacks: Vec::new(),
             passthrough: Vec::new(),
             execution_pointers: vec![0],
-            bindings: vec![HashMap::new()],
+            context: Context::new(),
         }
     }
 
     /// load the value referenced by `name`
     fn load(&self, name: &str) -> Value {
-        for binds in self.bindings.iter().rev() {
-            if let Some(v) = binds.get(name) {
-                return v.clone();
-            }
+        match self.context.load(name) {
+            Ok(v) => v,
+            Err(_) => Value::Undefined,
+
         }
-        Value::Undefined
     }
     
     /// store a value at the referenced place
     /// If the reference doesn't points to anything, returns an error
     fn store(&mut self, name: &str, val: Value) -> Result<(), ExecutionError> {
-        for binds in self.bindings.iter_mut().rev() {
-            if let Some(v) = binds.get_mut(name) {
-                *v = val;
-                return Ok(());
-            }
-        }
-        Err(exec_error!(format!("unknown reference {}", name)))
+        self.context.store(name, val).map_err(Into::into)
     }
     
     /// create a reference
-    /// If the reference doesn't points to anything, returns an error
     fn create_ref(&mut self, name: &str) -> Result<(), ExecutionError> {
-        self.bindings.last_mut()
-            .ok_or(exec_error!("Empty bindings stack"))?
-            .insert(name.to_string(), Value::Undefined);
-        Ok(())
+        self.context.create_ref(name).map_err(Into::into)
+    }
+
+    /// stores a value into the stack
+    fn push_value(&mut self, val: Value) {
+        self.context.push_value(val);
+    }
+
+    /// returns the last pushed value
+    fn pop_value(&mut self) -> Result<Value, ExecutionError> {
+        match self.context.pop_value() {
+            Some(value) => Ok(value),
+            None => Err(exec_error!("empty stack"))
+        }
     }
 
     /// increments the execution pointer
@@ -87,33 +98,24 @@ impl <'inst> Executor <'inst> {
         }
     }
 
-    /// stores a value into the stack
-    fn push_value(&mut self, val: Value) {
-        match self.value_stacks.last_mut() {
-            Some(ref mut stack) => stack.push(val),
-            None => self.value_stacks.push(vec![val]),
-        }
+    /// Return current the execution pointer
+    fn instruction_pointer(&mut self) -> Result<usize, ExecutionError> {
+        let ip: &usize = self.execution_pointers
+            .last()
+            .ok_or(exec_error!("No instruction pointer left."))?;
+        Ok(*ip)
     }
 
-    /// returns the last pushed value
-    fn pop_value(&mut self) -> Option<Value> {
-        self.value_stacks.last_mut()?.pop()
-    }
-
-    /// returns ref to the last pushed value
-    fn last_value(&mut self) -> Option<&Value> {
-        self.value_stacks.last_mut()?.last()
-    }
-
+    /// Load an instruction, and execute it
     pub fn exec_step(&mut self) -> Result<ExecStatus, ExecutionError> {
         use Instruction::*;
+        use Value::*;
         // fetch current expression
-        let pc = *self.execution_pointers.last()
-            .ok_or(exec_error!("No instruction pointer left."))?;
-        if pc >= self.instructions.len() {
+        let ip = self.instruction_pointer()?;
+        if ip >= self.instructions.len() {
             return Ok(ExecStatus::Finished);
         }
-        let current_instruction = self.instructions.get(pc)
+        let current_instruction = self.instructions.get(ip)
             .ok_or(exec_error!("reached end of instructions"))?;
         // evaluate it
         match *current_instruction { 
@@ -124,11 +126,8 @@ impl <'inst> Executor <'inst> {
             },
             GotoIf(addr) => { // Does not consume the value but cast it as a bool
                 // pop stack, and cast as bool
-                let value_bool: bool = (
-                        &self.pop_value()
-                        .ok_or(exec_error!("Empty stack"))?
-                    ).into();
-                // re-insert the boolean back onto the stackœ:w
+                let value_bool: bool = (&self.pop_value()?).into();
+                // re-insert the boolean back onto the stack
                 self.push_value(Value::Bool(value_bool));
                 if value_bool {
                     self.goto(addr);
@@ -142,115 +141,142 @@ impl <'inst> Executor <'inst> {
                 self.push_value(value);
             },
             Store(ref name) => {
-                let value = self.pop_value().ok_or(exec_error!("Empty stack, nothing to store"))?;
+                let value = self.pop_value()?;
                 self.store(name, value)?;
             },
             Val(ref value) => self.push_value(value.clone()),
             // Functions
             FnCall => {
-                let value = self.pop_value().ok_or(exec_error!("Empty stack, nothing to call"))?; 
+                let value = self.pop_value()?; 
                 if let Value::Function(addr) = value {
                     // go to the function body
                     self.execution_pointers.push(addr);
+                    // Add a new scope
+                    self.context.add_function_scope();
+                    // pass in arguments
+                    while let Some(value) = self.passthrough.pop() {
+                        self.push_value(value);
+                    }
                     return Ok(ExecStatus::Running);
                 } else {
                     return Err(exec_error!("value is not callable"));
                 }
             },
             FnRet => {
+                self.context.pop_function_scope();
+                // pass result values
+                while let Some(value) = self.passthrough.pop() {
+                    self.push_value(value);
+                }
                 let _ = self.execution_pointers.pop();
             },
             // Stack management
             PushToNext(nb) => {
                 for _ in 0..nb {
-                    let value = self.pop_value().ok_or(exec_error!("no value to passthrough"))?;
+                    let value = self.pop_value()?;
                     self.passthrough.push(value);
                 }
             },
             NewStack => {
-                self.bindings.push(HashMap::new()); // new bindings
-                // pass the values to the new stack
-                let mut values = Vec::new();
+                self.context.add_block_scope();
                 while let Some(value) = self.passthrough.pop() {
-                    values.push(value);
+                    self.push_value(value);
                 }
-                self.value_stacks.push(values); // new stack
             },
-            ClearStack => self.value_stacks.last_mut().ok_or(exec_error!("no stack to clear"))?.clear(),
+            ClearStack => self.context.flush_values(),
             DelStack => {
-                self.bindings.pop().ok_or(exec_error!("Empty binding stack"))?;
-                self.value_stacks.pop().ok_or(exec_error!("Empty stack, cannot delete it"))?;
+                let _ = self.context.pop_scope()
+                    .ok_or(exec_error!("No scope in context"))?;
                 // pass the values to the current stack
                 while let Some(value) = self.passthrough.pop() {
-                    self.value_stacks.last_mut()
-                        .ok_or(exec_error!("no value stack left"))?
-                        .push(value);
+                    self.push_value(value);
                 }
             },
             And => {
-                let left_hand = self.pop_value().ok_or(exec_error!("Value stack empty"))?;
-                let right_hand = self.pop_value().ok_or(exec_error!("Value stack empty"))?;
+                let left_hand = self.pop_value()?;
+                let right_hand = self.pop_value()?;
                 self.push_value(Value::Bool((&left_hand).into() && (&right_hand).into()));
             },
             Or => {
-                let left_hand = self.pop_value().ok_or(exec_error!("Value stack empty"))?;
-                let right_hand = self.pop_value().ok_or(exec_error!("Value stack empty"))?;
+                let left_hand = self.pop_value()?;
+                let right_hand = self.pop_value()?;
                 self.push_value(Value::Bool((&left_hand).into() || (&right_hand).into()));
             },
             // arithemic operations
             Add => {
-                let left_hand = self.pop_value().ok_or(exec_error!("Value stack empty"))?;
-                let right_hand = self.pop_value().ok_or(exec_error!("Value stack empty"))?;
+                let left_hand = self.pop_value()?;
+                let right_hand = self.pop_value()?;
                 self.push_value(left_hand + right_hand);
             },
             Sub => {
-                let left_hand = self.pop_value().ok_or(exec_error!("Value stack empty"))?;
-                let right_hand = self.pop_value().ok_or(exec_error!("Value stack empty"))?;
+                let left_hand = self.pop_value()?;
+                let right_hand = self.pop_value()?;
                 self.push_value(left_hand - right_hand);
             },
             Mul => {
-                let left_hand = self.pop_value().ok_or(exec_error!("Value stack empty"))?;
-                let right_hand = self.pop_value().ok_or(exec_error!("Value stack empty"))?;
+                let left_hand = self.pop_value()?;
+                let right_hand = self.pop_value()?;
                 self.push_value(left_hand * right_hand);
             },
             Div => {
-                let left_hand = self.pop_value().ok_or(exec_error!("Value stack empty"))?;
-                let right_hand = self.pop_value().ok_or(exec_error!("Value stack empty"))?;
+                let left_hand = self.pop_value()?;
+                let right_hand = self.pop_value()?;
                 self.push_value(left_hand / right_hand);
             },
             Mod => {
-                let left_hand = self.pop_value().ok_or(exec_error!("Value stack empty"))?;
-                let right_hand = self.pop_value().ok_or(exec_error!("Value stack empty"))?;
+                let left_hand = self.pop_value()?;
+                let right_hand = self.pop_value()?;
                 self.push_value(left_hand % right_hand);
             },
             Pow => {
-                let left_hand = self.pop_value().ok_or(exec_error!("Value stack empty"))?;
-                let right_hand = self.pop_value().ok_or(exec_error!("Value stack empty"))?;
+                let left_hand = self.pop_value()?;
+                let right_hand = self.pop_value()?;
                 self.push_value(left_hand.pow(&right_hand));
             },
 
             Not => {
-                let value = self.pop_value().ok_or(exec_error!("Value stack empty"))?;
+                let value = self.pop_value()?;
                 self.push_value(!value);
             },
             // Comparison
             Equal => {
-                let left_hand = self.pop_value().ok_or(exec_error!("Value stack empty"))?;
-                let right_hand = self.pop_value().ok_or(exec_error!("Value stack empty"))?;
+                let left_hand = self.pop_value()?;
+                let right_hand = self.pop_value()?;
                 self.push_value(left_hand.is_equal(&right_hand));
             },
             NotEqual => {
-                let left_hand = self.pop_value().ok_or(exec_error!("Value stack empty"))?;
-                let right_hand = self.pop_value().ok_or(exec_error!("Value stack empty"))?;
+                let left_hand = self.pop_value()?;
+                let right_hand = self.pop_value()?;
                 self.push_value(!left_hand.is_equal(&right_hand));
             },
-
+            GreaterThan => {
+                let left_float: f64 = (&self.pop_value()?).into();
+                let right_float: f64 = (&self.pop_value()?).into();
+                self.push_value(Bool(left_float > right_float));
+            },
+            GreaterThanOrEqual => {
+                let left_float: f64 = (&self.pop_value()?).into();
+                let right_float: f64 = (&self.pop_value()?).into();
+                self.push_value(Bool(left_float >= right_float));
+            },
+            LessThan => {
+                let left_float: f64 = (&self.pop_value()?).into();
+                let right_float: f64 = (&self.pop_value()?).into();
+                self.push_value(Bool(left_float < right_float));
+            },
+            LessThanOrEqual => {
+                let left_float: f64 = (&self.pop_value()?).into();
+                let right_float: f64 = (&self.pop_value()?).into();
+                self.push_value(Bool(left_float <= right_float));
+            },
             _ => {},
         }
         self.goto_next();
         Ok(ExecStatus::Running)
     }
 
+    /// Execute all instructions
+    /// return the top of the value stack
     pub fn execute(&mut self) -> Result<Option<Value>, ExecutionError> {
         loop {
             match self.exec_step() {
@@ -259,7 +285,10 @@ impl <'inst> Executor <'inst> {
                 Ok(ExecStatus::Finished) => break,
             }
         }
-        Ok(self.pop_value())
+        match self.pop_value() {
+            Ok(value) => Ok(Some(value)),
+            Err(_) => Ok(None),
+        }
     }
 }
 
@@ -517,6 +546,47 @@ mod tests {
         counter
         "#).unwrap();
         assert_eq!(val, Some(Num(100.)));
+    }
+    #[test]
+    fn test_function() {
+        // classic call
+        let val = exec(r#"
+        function f() {
+            return true;
+        }
+        f()
+        "#).unwrap();
+        assert_eq!(val, Some(Bool(true)));
+        // early return
+        let val = exec(r#"
+        function f(arg) {
+            if (arg <= 1) {
+                return true;
+            }
+            return false;
+        }
+        f(0)
+        "#).unwrap();
+        assert_eq!(val, Some(Bool(true)));
+        // recursion
+        let val = exec(r#"
+        let counter = 0;
+        function f(arg) {
+            counter = counter + 1;
+            if (arg == 0) {
+                return true;
+            }
+            return f(arg - 1);
+        }
+        f(9);
+        counter
+        "#).unwrap();
+        assert_eq!(val, Some(Num(10.)));
+    }
+    #[test]
+    fn test_lower_than() {
+        let val = exec("1 < 2 ").unwrap();
+        assert_eq!(val, Some(Bool(true)));
     }
 }
 
