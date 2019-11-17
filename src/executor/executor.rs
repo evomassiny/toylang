@@ -233,11 +233,6 @@ impl <'inst> Executor <'inst> {
                 let right_hand = self.pop_value()?;
                 self.push_value(left_hand.pow(&right_hand));
             },
-
-            Not => {
-                let value = self.pop_value()?;
-                self.push_value(!value);
-            },
             // Comparison
             Equal => {
                 let left_hand = self.pop_value()?;
@@ -269,7 +264,19 @@ impl <'inst> Executor <'inst> {
                 let right_float: f64 = (&self.pop_value()?).into();
                 self.push_value(Bool(left_float <= right_float));
             },
-            _ => {},
+            // Unary operations
+            Not => {
+                let value = self.pop_value()?;
+                self.push_value(!value);
+            },
+            Plus => {
+                let value: f64 = (&self.pop_value()?).into();
+                self.push_value(Num(value));
+            },
+            Minus => {
+                let value: f64 = (&self.pop_value()?).into();
+                self.push_value(Num(-value));
+            },
         }
         self.goto_next();
         Ok(ExecStatus::Running)
