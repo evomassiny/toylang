@@ -1,9 +1,10 @@
 use std::collections::HashMap;
 use crate::ast::Expr;
-use crate::compiler::preprocessors::{PreValue,PreInstruction};
+use crate::compiler::preprocessors::{PreValue,PreInstruction,LabelGenerator,Addr,AddrKind};
 use crate::compiler::preprocessors as pp;
 use crate::compiler::instructions::Instruction;
 use crate::builtins::Value;
+
 
 
 #[derive(Debug)]
@@ -22,8 +23,8 @@ impl Compiler {
         let mut nodes: Vec<&Expr> = Vec::new();
         let mut dep_count: Vec<usize> = Vec::new();
 
-        // a usize used to build uniq labels
-        let mut label_counter: usize = 0;
+        // a struct used to build uniq labels
+        let mut labels = LabelGenerator::new();
 
         dep_count.push(0);
         nodes.push(expression);
@@ -56,18 +57,20 @@ impl Compiler {
             let insts: Vec<PreInstruction> = match *node {
                 Const(c) => pp::preprocess_const(c)?,
                 Return(_) => pp::preprocess_return(sub_instructions)?,
-                If(..) => pp::preprocess_if(sub_instructions, &mut label_counter)?,
+                If(..) => pp::preprocess_if(sub_instructions, &mut labels)?,
                 Block(..) => pp::preprocess_block(sub_instructions)?,
                 LetDecl(name, _) => pp::preprocess_let(name, sub_instructions)?,
                 Local(id) => pp::preprocess_local(id)?,
                 Assign(id, ..) => pp::assign_to_instructions(id, sub_instructions)?,
                 Call(..) => pp::preprocess_call(sub_instructions)?,
                 FunctionDecl(name, args, _block) => 
-                    pp::preprocess_function_decl(sub_instructions, name, args, &mut label_counter)?,
+                    pp::preprocess_function_decl(sub_instructions, name, args, &mut labels)?,
                 BinaryOp(op, ..) => 
-                    pp::preprocess_binary_op(op, sub_instructions, &mut label_counter)?,
+                    pp::preprocess_binary_op(op, sub_instructions, &mut labels)?,
                 UnaryOp(op, ..) => pp::preprocess_unary_op(op, sub_instructions)?,
-                WhileLoop(..) => pp::preprocess_while(sub_instructions, &mut label_counter)?,
+                WhileLoop(..) => pp::preprocess_while(sub_instructions, &mut labels)?,
+                Break => pp::preprocess_break()?,
+                Continue => pp::preprocess_continue()?,
             };
             if insts.len() > 0 {
                 instructions.push(insts);
@@ -85,16 +88,52 @@ impl Compiler {
     pub fn compile(ast: &Expr) -> Option<Vec<Instruction>> {
         use Instruction::*;
         // compile into proto instructions
-        let pre_instructions = Self::preprocess(ast)?;
+        let mut pre_instructions = Self::preprocess(ast)?;
+        
+        // solve continue as Goto labels
+        // relies on the fact that a Beginloop label must be located *BEFORE* 
+        // the *continue* expression
+        let mut last_loop_start: usize = 0;
+        for (i, pre_intruction) in pre_instructions.iter_mut().enumerate() {
+            match *pre_intruction {
+                PreInstruction::AddrLabel( Addr { addr, kind: AddrKind::BeginLoop }) => {
+                    // store the instruction index 
+                    last_loop_start = addr;
+                    continue;
+                },
+                PreInstruction::Continue => {},
+                _ => continue,
+            }
+            // turn the continue into a GOTO
+            *pre_intruction = PreInstruction::Goto(last_loop_start);
+        }
+        // solve break as Goto labels
+        // must iters the label in reverse
+        // relies on the fact that a Endloop label must be located *AFTER* 
+        // the *break* expression
+        let mut last_loop_end: usize = 0;
+        for (i, pre_intruction) in pre_instructions.iter_mut().enumerate().rev() {
+            match *pre_intruction {
+                PreInstruction::AddrLabel( Addr { addr, kind: AddrKind::EndLoop }) => {
+                    // store the instruction index 
+                    last_loop_end = addr;
+                    continue;
+                },
+                PreInstruction::Break => {},
+                _ => continue,
+            }
+            // turn the continue into a GOTO
+            *pre_intruction = PreInstruction::Goto(last_loop_end);
+        }
 
         // solve labels as instruction offset
         let mut label_to_offset: HashMap<usize, usize> = HashMap::new();
         let mut label_count: usize = 0;
         // collect labels
         for (i, pre_intruction) in pre_instructions.iter().enumerate() {
-            if let PreInstruction::AddrLabel(label) = *pre_intruction {
+            if let PreInstruction::AddrLabel( Addr { addr, kind }) = *pre_intruction {
                 // store the instruction index 
-                label_to_offset.insert(label, i - label_count);
+                label_to_offset.insert(addr, i - label_count);
                 label_count += 1;
             }
         }
@@ -112,7 +151,7 @@ impl Compiler {
                     let offset = label_to_offset.get(&label)?;
                     instructions.push(GotoIf(*offset));
                 },
-                PreInstruction::AddrLabel(_) => {},
+                PreInstruction::AddrLabel(..) => {},
                 PreInstruction::NewRef(s) => instructions.push(NewRef(s)),
                 PreInstruction::Load(s) => instructions.push(Load(s)),
                 PreInstruction::Store(s) => instructions.push(Store(s)),
@@ -162,6 +201,10 @@ impl Compiler {
                 PreInstruction::Minus => instructions.push(Minus),
                 PreInstruction::Plus => instructions.push(Plus),
                 PreInstruction::Not => instructions.push(Not),
+                PreInstruction::NewLoopStack => instructions.push(NewLoopStack),
+                PreInstruction::DelLoopStack => instructions.push(DelLoopStack),
+                // both must have been replaced by Goto
+                PreInstruction::Break | PreInstruction::Continue => {},
             }
         }
         Some(instructions)

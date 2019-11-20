@@ -20,7 +20,7 @@ macro_rules! context_error {
 pub enum ScopeKind {
     Function,
     Block,
-    // Loop
+    Loop,
 }
 
 pub struct Scope {
@@ -38,6 +38,17 @@ impl Scope {
     }
 }
 
+/// A `Context` defines a set of scopes, 
+/// reflecting the state of an interpreter based on stack machine.
+/// It is itself a stack of scopes.
+///
+/// A scope represents 2 things:
+/// * the references (bindings) and their associated values
+/// * a register stack (if that make sense...) which is just a storage 
+/// for the temporary results of each expressions
+///
+/// A `Context` allows an Executor to keep track of its memory
+/// during the instructions evalutation.
 pub struct Context {
     scopes: Vec<Scope>
 }
@@ -53,6 +64,10 @@ impl Context {
         self.scopes.push(Scope::new(ScopeKind::Block));
     }
 
+    pub fn add_loop_scope(&mut self) {
+        self.scopes.push(Scope::new(ScopeKind::Loop));
+    }
+
     pub fn add_function_scope(&mut self) {
         self.scopes.push(Scope::new(ScopeKind::Function));
     }
@@ -66,11 +81,23 @@ impl Context {
             }
         }
     }
+    
+    /// pop scopes until we poped one Loop Scope
+    pub fn pop_loop_scope(&mut self) {
+        while let Some( Scope { kind, .. }) = self.scopes.pop() {
+            match kind {
+                ScopeKind::Loop => break,
+                _ => {}
+            }
+        }
+    }
 
+    /// pop a scope, no matter its kind
     pub fn pop_scope(&mut self) -> Option<Scope> {
         self.scopes.pop()
     }
 
+    /// push a value to the register stack
     pub fn push_value(&mut self, val: Value) {
         match self.scopes.last_mut() {
             Some(ref mut scope) => scope.values.push(val),
@@ -81,10 +108,12 @@ impl Context {
         }
     }
 
+    /// pop a value to the register stack
     pub fn pop_value(&mut self) -> Option<Value> {
         self.scopes.last_mut()?.values.pop()
     }
 
+    /// flush the register stack
     pub fn flush_values(&mut self) {
         match self.scopes.last_mut() {
             Some(ref mut scope) => scope.values.clear(),

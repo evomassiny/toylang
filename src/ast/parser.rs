@@ -134,6 +134,12 @@ pub enum FlatExp {
     /// consumes 0 or 1 expression, 
     /// depending on either or not it returns something
     FlatReturn(usize),
+    /// Quit the current loop, 
+    /// does not consume token
+    FlatBreak,
+    /// Continue the current loop, 
+    /// does not consume token
+    FlatContinue,
     /// Let declaraton
     /// consumes 1 or 2 expressions, 
     /// depending on either or not we assign a value to it
@@ -179,6 +185,7 @@ pub fn parse_flat_expressions(tokens: &[Token]) -> Result<Vec<FlatExp>, ParsingE
             else if let Some(exp) = patterns::match_function_call(&unparsed_tokens[idx..]) { exp }
             else if let Some(exp) = patterns::match_parenthesis_fenced(&unparsed_tokens[idx..]) { exp }
             else if let Some(exp) = patterns::match_unary_op(&unparsed_tokens[idx..]) { exp }
+            else if let Some(exp) = patterns::match_jumpers(&unparsed_tokens[idx..]) { exp }
             else if let Some(exp) = patterns::match_const(&unparsed_tokens[idx..]) { exp }
             else if let Some(exp) = patterns::match_local(&unparsed_tokens[idx..]) { exp }
             else { 

@@ -39,6 +39,10 @@ pub enum Expr {
     FunctionDecl(String, Vec<String>, Box<Expr>),
     /// Return the expression from a function
     Return(Option<Box<Expr>>),
+    /// quit the current
+    Break,
+    /// quit the current loop evaluation and go to the next one
+    Continue,
     /// Let declaraton
     LetDecl(String, Option<Box<Expr>>),
 }
@@ -61,6 +65,7 @@ impl Expr {
             FunctionDecl(..) => 1,
             Return(e) => if e.is_some() { 1 } else { 0 },
             LetDecl(_, e) => if e.is_some() { 1 } else { 0 },
+            Break | Continue => 0,
         }
     }
 
@@ -139,6 +144,7 @@ impl Expr {
                     _ => None
                 }
             },
+            Break | Continue => None,
         }
     }
 }
@@ -248,6 +254,8 @@ impl Ast {
                         exp_stack.push(LetDecl(id, None));
                     }
                 },
+                FlatBreak => exp_stack.push(Break),
+                FlatContinue => exp_stack.push(Continue),
                 // those aren't expression, but bounds
                 FlatFenced => {},
             }

@@ -4,4 +4,12 @@ function fib(n) {
     }
     return fib(n - 1) + fib(n - 2);
 }
-fib(16)
+
+let i = 0;
+while (true) {
+    if (fib(i) > 10) {
+        break;
+    }
+    i = i + 1;
+}
+i

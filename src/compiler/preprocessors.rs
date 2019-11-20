@@ -13,6 +13,7 @@ use crate::ast::{
 };
 
 pub type Label = usize;
+
 #[derive(Debug,Clone,PartialEq)]
 pub enum PreValue {
     /// any quoted string
@@ -40,12 +41,93 @@ impl PreValue {
     }
 }
 
+#[derive(Debug,Clone,PartialEq,Copy)]
+pub enum AddrKind {
+    Jump,
+    BeginLoop,
+    EndLoop,
+    BeginFunction,
+    EndFunction,
+}
+
+#[derive(Debug,Clone,PartialEq,Copy)]
+pub struct Addr {
+    pub kind: AddrKind,
+    pub addr: Label,
+}
+
+/// This struct's only job is to generates uniq 
+/// addresses
+#[derive(Debug,Clone,PartialEq)]
+pub struct LabelGenerator {
+    addr: Label,
+}
+
+impl Iterator for LabelGenerator {
+    type Item = Label;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let addr = self.addr;
+        self.addr += 1;
+        Some(addr)
+    }
+}
+
+impl LabelGenerator {
+    pub fn new() -> Self {
+        Self { addr: 0 }
+    }
+
+    /// Returns an unused `begin loop` address
+    pub fn begin_loop(&mut self) -> Addr {
+        Addr { 
+            addr: self.next().unwrap(), // cannot fail
+            kind: AddrKind::BeginLoop,
+        }
+    }
+
+    /// Returns an unused `end loop` address
+    pub fn end_loop(&mut self) -> Addr {
+        Addr {
+            addr: self.next().unwrap(), // cannot fail
+            kind: AddrKind::EndLoop,
+        }
+    }
+
+    /// Returns an unused `jump to` address
+    pub fn jump_to(&mut self) -> Addr {
+        Addr {
+            addr: self.next().unwrap(), // cannot fail
+            kind: AddrKind::Jump,
+        }
+    }
+
+    /// Returns an unused `begin function` label address
+    pub fn begin_function(&mut self) -> Addr {
+        Addr {
+            addr: self.next().unwrap(), // cannot fail
+            kind: AddrKind::BeginFunction,
+        }
+    }
+
+    /// Returns an unused `end function` label address
+    pub fn end_function(&mut self) -> Addr {
+        Addr {
+            addr: self.next().unwrap(), // cannot fail
+            kind: AddrKind::EndFunction,
+        }
+    }
+
+}
+
 #[derive(Debug,Clone,PartialEq)]
 pub enum PreInstruction {
     // jump
     Goto(Label),
     GotoIf(Label),
-    AddrLabel(Label),
+    AddrLabel(Addr),
+    Break,
+    Continue,
     // Variable bindings
     NewRef(String), 
     Load(String),
@@ -70,6 +152,10 @@ pub enum PreInstruction {
     /// remove the last stack
     /// then if any element are in the passthrough buffer push those elements to the current one
     DelStack,
+    /// Creates a new Loop scope
+    NewLoopStack,
+    /// remove the last loop stack
+    DelLoopStack,
     // Native function
     // ... TODO
     // Binary Instructions
@@ -100,6 +186,16 @@ use PreInstruction::*;
 /// Build the intructions needed to run a `Const` expression
 pub fn preprocess_const(c: &Const) -> Option<Vec<PreInstruction>> {
     Some(vec![Val(PreValue::from_const(c))])
+}
+
+/// Build the intructions needed to run a `Break` expression
+pub fn preprocess_break() -> Option<Vec<PreInstruction>> {
+    Some(vec![Break])
+}
+
+/// Build the intructions needed to run a `Continue` expression
+pub fn preprocess_continue() -> Option<Vec<PreInstruction>> {
+    Some(vec![Continue])
 }
 
 /// Build the intructions needed to run a `return` expression
@@ -157,12 +253,10 @@ pub fn preprocess_block(sub_instructions: Vec<Vec<PreInstruction>>) -> Option<Ve
 ///     AddrLabel 'label_true'
 ///     <expr_true>
 ///     AddrLabel 'end'
-pub fn preprocess_if(mut sub_instructions: Vec<Vec<PreInstruction>>, label_counter: &mut usize) -> Option<Vec<PreInstruction>> {
+pub fn preprocess_if(mut sub_instructions: Vec<Vec<PreInstruction>>, labels: &mut LabelGenerator) -> Option<Vec<PreInstruction>> {
     let mut instructions = Vec::new();
-    let true_block_label = *label_counter;
-    *label_counter += 1;
-    let end = *label_counter;
-    *label_counter += 1;
+    let true_block_label = labels.jump_to();
+    let end = labels.jump_to();
 
     sub_instructions.reverse();
     let cond_block = sub_instructions.pop()?;
@@ -171,12 +265,12 @@ pub fn preprocess_if(mut sub_instructions: Vec<Vec<PreInstruction>>, label_count
 
     // conditions
     instructions.extend(cond_block);
-    instructions.push(GotoIf(true_block_label));
+    instructions.push(GotoIf(true_block_label.addr));
     // false block
     if let Some(false_block) = false_block {
         instructions.extend(false_block);
     }
-    instructions.push(Goto(end));
+    instructions.push(Goto(end.addr));
     // true block
     instructions.push(AddrLabel(true_block_label));
     instructions.extend(true_block);
@@ -265,15 +359,13 @@ pub fn preprocess_function_decl(
     mut sub_instructions: Vec<Vec<PreInstruction>>,
     name: &str,
     args: &Vec<String>,
-    label_counter: &mut usize) -> Option<Vec<PreInstruction>> {
+    labels: &mut LabelGenerator) -> Option<Vec<PreInstruction>> {
     let mut instructions = Vec::new();
     // set the address of the function start and end
-    let start = *label_counter;
-    *label_counter += 1;
-    let end = *label_counter;
-    *label_counter += 1;
+    let start = labels.begin_function();
+    let end = labels.end_function();
     // avoid evaluating the function if were not calling it
-    instructions.push(Goto(end));
+    instructions.push(Goto(end.addr));
     // set the `start` label here
     instructions.push(AddrLabel(start)); 
     
@@ -306,7 +398,7 @@ pub fn preprocess_function_decl(
     instructions.push(AddrLabel(end)); 
 
     // set the variable that will hold the function address
-    instructions.push(Val(PreValue::Function(start)));
+    instructions.push(Val(PreValue::Function(start.addr)));
     instructions.push(NewRef(name.into()));
     instructions.push(Store(name.into()));
 
@@ -375,28 +467,26 @@ pub fn preprocess_comparison_op(op: &ComparisonOp, mut sub_instructions: Vec<Vec
 ///     <expr_b>
 ///     Or
 ///     AddrLabel 'end'
-pub fn preprocess_logical_op(op: &LogicalOp, mut sub_instructions: Vec<Vec<PreInstruction>>, label_counter: &mut usize) -> Option<Vec<PreInstruction>> {
+pub fn preprocess_logical_op(op: &LogicalOp, mut sub_instructions: Vec<Vec<PreInstruction>>, labels: &mut LabelGenerator) -> Option<Vec<PreInstruction>> {
     // avoid evaluating the function if were not calling it
     let right_hand = sub_instructions.pop()?;
     // process the left hand of the `and`
     let mut instructions = sub_instructions.pop()?;
     // prepare the `end` label
-    let end = *label_counter;
-    *label_counter += 1;
+    let end = labels.jump_to();
     // append the actual Operation instructions
     match *op {
         LogicalOp::And => {
-            let right_label = *label_counter;
-            *label_counter += 1;
-            instructions.push(GotoIf(right_label)); 
-            instructions.push(Goto(end)); 
+            let right_label = labels.jump_to();
+            instructions.push(GotoIf(right_label.addr)); 
+            instructions.push(Goto(end.addr)); 
             instructions.push(AddrLabel(right_label)); 
             instructions.extend(right_hand);
             instructions.push(And); 
 
         },
         LogicalOp::Or => {
-            instructions.push(GotoIf(end)); 
+            instructions.push(GotoIf(end.addr)); 
             instructions.extend(right_hand);
             instructions.push(Or); 
         },
@@ -440,26 +530,36 @@ pub fn preprocess_unary_op(op: &UnaryOp, mut sub_instructions: Vec<Vec<PreInstru
 
 /// Build the intructions needed to run WhileLoop
 /// * So `while (<cond_expr>) { <block_expr>}` is compiled as:
-///     Goto 'cond'
-///     AddrLabel 'block'
-///     <block_expr>
-///     AddrLabel 'cond'
+///     NewLoopStack
+///     Label 'start_loop'
 ///     <cond_expr>
 ///     GotoIf 'block'
-pub fn preprocess_while(mut sub_instructions: Vec<Vec<PreInstruction>>, label_counter: &mut usize) -> Option<Vec<PreInstruction>> {
-    let cond_label = *label_counter;
-    *label_counter += 1;
-    let block_label = *label_counter;
-    *label_counter += 1;
+///     Goto 'end'
+///     Label 'block'
+///     <block_expr>
+///     Goto 'start_loop'
+///     Label 'end_loop'
+///     DelLoopStack
+pub fn preprocess_while(mut sub_instructions: Vec<Vec<PreInstruction>>, labels: &mut LabelGenerator) -> Option<Vec<PreInstruction>> {
+    // build label
+    let begin = labels.begin_loop();
+    let block_label = labels.jump_to();
+    let end = labels.end_loop();
+    // gather expressions
+    let block = sub_instructions.pop()?;
+    let condition = sub_instructions.pop()?;
+    // build the instruction set
     let mut instructions = Vec::new();
-    instructions.push(Goto(cond_label));
+    instructions.push(NewLoopStack);
+    instructions.push(AddrLabel(begin));
+    instructions.extend(condition);
+    instructions.push(GotoIf(block_label.addr));
+    instructions.push(Goto(end.addr));
     instructions.push(AddrLabel(block_label));
-    // append block expressions
-    instructions.extend(sub_instructions.pop()?);
-    instructions.push(AddrLabel(cond_label));
-    // append condition expressions
-    instructions.extend(sub_instructions.pop()?);
-    instructions.push(GotoIf(block_label));
+    instructions.extend(block);
+    instructions.push(Goto(begin.addr));
+    instructions.push(AddrLabel(end));
+    instructions.push(DelLoopStack);
     Some(instructions)
 }
 
@@ -469,11 +569,11 @@ pub fn preprocess_while(mut sub_instructions: Vec<Vec<PreInstruction>>, label_co
 /// * `preprocess_comparison_op`
 /// * `preprocess_logical_op`
 /// for details
-pub fn preprocess_binary_op(op: &BinaryOp, sub_instructions: Vec<Vec<PreInstruction>>, label_counter: &mut usize) -> Option<Vec<PreInstruction>> {
+pub fn preprocess_binary_op(op: &BinaryOp, sub_instructions: Vec<Vec<PreInstruction>>, labels: &mut LabelGenerator) -> Option<Vec<PreInstruction>> {
     match op {
         Numerical(num_op) => preprocess_numerical_op(num_op, sub_instructions),
         Comparison(comp_op) => preprocess_comparison_op(comp_op, sub_instructions),
-        Logical(logical_op) => preprocess_logical_op(logical_op, sub_instructions, label_counter),
+        Logical(logical_op) => preprocess_logical_op(logical_op, sub_instructions, labels),
     }
 }
     
@@ -481,7 +581,7 @@ pub fn preprocess_binary_op(op: &BinaryOp, sub_instructions: Vec<Vec<PreInstruct
 mod test {
     use crate::ast::Ast;
     use crate::compiler::compiler::Compiler;
-    use crate::compiler::preprocessors::{PreInstruction,PreValue};
+    use crate::compiler::preprocessors::{PreInstruction,PreValue,Addr,AddrKind};
     use PreInstruction::*;
     use PreValue::*;
 
@@ -498,11 +598,11 @@ mod test {
                 Val(Bool(true)),
                 GotoIf(0),
                 Goto(1),
-                AddrLabel(0),
+                AddrLabel(Addr { addr: 0, kind: AddrKind::Jump }),
                 NewStack,
                 Val(Str("true_block".into())),
                 DelStack,
-                AddrLabel(1),
+                AddrLabel(Addr { addr: 1, kind: AddrKind::Jump }),
             ],
 		);
         let ast = Ast::from_str(r#"
@@ -520,11 +620,11 @@ mod test {
                 Val(Str("false_block".into())),
                 DelStack,
                 Goto(1),
-                AddrLabel(0),
+                AddrLabel(Addr { addr: 0, kind: AddrKind::Jump }),
                 NewStack,
                 Val(Str("true_block".into())),
                 DelStack,
-                AddrLabel(1),
+                AddrLabel(Addr { addr: 1, kind: AddrKind::Jump }),
             ],
 		);
     }
@@ -617,7 +717,7 @@ mod test {
             Compiler::preprocess(&ast.root).unwrap(),
             vec![
                 Goto(1),  // skip function block if we're not calling it
-                AddrLabel(0), // begin address
+                AddrLabel(Addr { addr: 0, kind: AddrKind::BeginFunction } ), // begin address
                 NewRef("a".into()), // first arg 
                 Store("a".into()),
                 NewRef("b".into()), // 2nd arg
@@ -625,7 +725,7 @@ mod test {
                 Val(Bool(true)), // function block
                 PushToNext(1),   
                 FnRet,
-                AddrLabel(1),  // end address
+                AddrLabel(Addr { addr: 1, kind: AddrKind::EndFunction } ), // begin address
                 Val(Function(0)), // put function address into a `foo` var
                 NewRef("foo".into()),
                 Store("foo".into()),
@@ -637,7 +737,7 @@ mod test {
             Compiler::preprocess(&ast.root).unwrap(),
             vec![
                 Goto(1),  // skip function block if we're not calling it
-                AddrLabel(0), // begin address
+                AddrLabel(Addr { addr: 0, kind: AddrKind::BeginFunction } ), // begin address
                 NewRef("a".into()), // first arg 
                 Store("a".into()),
                 NewRef("b".into()), // 2nd arg
@@ -645,7 +745,7 @@ mod test {
                 Val(Undefined),  // backup return call
                 PushToNext(1),
                 FnRet,
-                AddrLabel(1),  // end address
+                AddrLabel(Addr { addr: 1, kind: AddrKind::EndFunction } ), // begin address
                 Val(Function(0)), // put function address into a `foo` var
                 NewRef("foo".into()),
                 Store("foo".into()),
@@ -697,10 +797,10 @@ mod test {
                 Val(Bool(true)),
                 GotoIf(1), // success path
                 Goto(0), // failure path
-                AddrLabel(1),
+                AddrLabel(Addr { addr: 1, kind: AddrKind::Jump }),
                 Val(Bool(false)),
                 And,
-                AddrLabel(0),
+                AddrLabel(Addr { addr: 0, kind: AddrKind::Jump }),
             ],
         );
         // test OR
@@ -712,7 +812,7 @@ mod test {
                 GotoIf(0), // success path
                 Val(Bool(false)),
                 Or,
-                AddrLabel(0),
+                AddrLabel(Addr { addr: 0, kind: AddrKind::Jump }),
             ],
         );
     }
@@ -740,19 +840,23 @@ mod test {
         assert_eq!(
             Compiler::preprocess(&ast.root).unwrap(),
             vec![
-                Goto(0),
-                AddrLabel(1), // block instructions
+                NewLoopStack,
+                AddrLabel(Addr { addr: 0, kind: AddrKind::BeginLoop }), // begin
+                Val(Num(2.)),
+                Load("a".into()),
+                LessThan,
+                GotoIf(1),
+                Goto(2),
+                AddrLabel(Addr { addr: 1, kind: AddrKind::Jump }), // block 
                 NewStack,
                 Val(Num(1.)),
                 Load("a".into()),
                 Add,
                 Store("a".into()),
                 DelStack,
-                AddrLabel(0),     // condition instructions
-                Val(Num(2.)),
-                Load("a".into()),
-                LessThan,
-                GotoIf(1),
+                Goto(0),
+                AddrLabel(Addr { addr: 2, kind: AddrKind::EndLoop }), // block 
+                DelLoopStack,
             ],
         );
     }

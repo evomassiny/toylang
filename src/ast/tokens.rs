@@ -18,6 +18,10 @@ pub enum KeywordKind {
     Null,
     /// The 'undefined' keyword
     Undefined,
+    /// The 'break' keyword
+    Break,
+    /// The 'continue' keyword
+    Continue,
 }
 
 /// Punctuation

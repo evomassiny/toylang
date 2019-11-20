@@ -5,7 +5,7 @@ I'm using it to experiment parser, compiler and interpreter designs (as I don't 
 
 To test the interpreter you can run: 
 ```
-cargo run -- ./source.js
+cargo run ./source.js
 ```
 
 The supported syntaxe is a small subset of the javascript one:
@@ -18,6 +18,8 @@ The supported syntaxe is a small subset of the javascript one:
     * `let`
     * `null`
     * `undefined`
+    * `continue`
+    * `break`
 * operators:
     * `+ - * / ** %`
     * `> < >= <= ==`

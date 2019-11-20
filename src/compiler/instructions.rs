@@ -35,6 +35,10 @@ pub enum Instruction {
     /// remove the last stack
     /// then if any element are in the passthrough buffer push those elements to the current one
     DelStack,
+    /// Creates a new Loop scope
+    NewLoopStack,
+    /// remove the last loop stack
+    DelLoopStack,
     // Binary Instructions
     // * Numerical
     Add,

@@ -263,8 +263,26 @@ pub fn match_const(tokens: &[Option<&Token>]) -> Option<(FlatExp, Vec<usize>)> {
         },
         Some(Token { kind: Keyword(keyword), ..} ) => {
             match keyword {
-                Null => return Some((FlatConst(Const::Null),vec![0])),
+                Null => return Some((FlatConst(Const::Null), vec![0])),
                 Undefined => return Some((FlatConst(Const::Undefined), vec![0])),
+                _ => {}
+            }
+        },
+        _ => {}
+    }
+    None
+}
+
+/// Match Jumpers expressions
+/// * `break`
+/// * `continue`
+pub fn match_jumpers(tokens: &[Option<&Token>]) -> Option<(FlatExp, Vec<usize>)> {
+    if tokens.len() < 1 { return None; }
+    match tokens[0] {
+        Some(Token { kind: Keyword(keyword), ..} ) => {
+            match keyword {
+                Break => return Some((FlatBreak, vec![0])),
+                Continue => return Some((FlatContinue, vec![0])),
                 _ => {}
             }
         },
@@ -1059,6 +1077,30 @@ mod test {
                 vec![0, 1]
             )),
             "Failed to match assign"
+        );
+    }
+
+    #[test]
+    fn match_jumpers() {
+        let tokens = lex("break").unwrap();
+        let unparsed_tokens: Vec<Option<&Token>> = tokens.iter().map(|t| Some(t)).collect();
+        assert_eq!(
+            patterns::match_jumpers(&unparsed_tokens),
+            Some((
+                FlatExp::FlatBreak,
+                vec![0]
+            )),
+            "Failed to match break"
+        );
+        let tokens = lex("continue").unwrap();
+        let unparsed_tokens: Vec<Option<&Token>> = tokens.iter().map(|t| Some(t)).collect();
+        assert_eq!(
+            patterns::match_jumpers(&unparsed_tokens),
+            Some((
+                FlatExp::FlatContinue,
+                vec![0]
+            )),
+            "Failed to match continue"
         );
     }
 }

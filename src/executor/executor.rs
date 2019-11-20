@@ -170,6 +170,9 @@ impl <'inst> Executor <'inst> {
                 }
                 let _ = self.execution_pointers.pop();
             },
+            // LoopMangement
+            NewLoopStack => self.context.add_loop_scope(),
+            DelLoopStack => self.context.pop_loop_scope(),
             // Stack management
             PushToNext(nb) => {
                 for _ in 0..nb {
@@ -309,9 +312,9 @@ mod tests {
 
     fn exec(src: &str) -> Result<Option<Value>, ExecutionError> {
         // parse the ast
-        let ast = Ast::from_str(&src).unwrap();
+        let ast = Ast::from_str(&src).expect("Could not build ast");
         // Compile into instructions
-        let instructions = Compiler::compile(&ast.root).unwrap();
+        let instructions = Compiler::compile(&ast.root).expect("compiler error");
         // execute the instructions
         let mut executor = Executor::from_instructions(&instructions);
         executor.execute()
@@ -594,6 +597,33 @@ mod tests {
     fn test_lower_than() {
         let val = exec("1 < 2 ").unwrap();
         assert_eq!(val, Some(Bool(true)));
+    }
+    #[test]
+    fn test_break() {
+        let val = exec(r#"
+        let counter = 0;
+        while (true) {
+            if (counter > 2) {
+                break;
+            }
+            counter = counter + 1;
+        }
+        counter
+        "#).unwrap();
+        assert_eq!(val, Some(Num(3.)));
+    }
+    #[test]
+    fn test_continue() {
+        let val = exec(r#"
+        let counter = 0;
+        while (counter < 2) {
+            counter = counter + 1;
+            continue;
+            counter = 300;
+        }
+        counter
+        "#).unwrap();
+        assert_eq!(val, Some(Num(2.)));
     }
 }
 
