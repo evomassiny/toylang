@@ -81,7 +81,7 @@ pub fn lex(src: &str) -> Result<Vec<Token>, Box<dyn Error>> {
         ).unwrap();
         static ref COMMENT_PATTERN: Regex = Regex::new(
             // use `(?m)` to match until \n
-            r"(?m)^//(?P<token>.+?)$"
+            r"(?m)//(?P<token>.+?)$"
         ).unwrap();
         static ref IDENTIFIER_PATTERN: Regex = Regex::new(
             r"^(?P<token>[[:alpha:]]\w*)"

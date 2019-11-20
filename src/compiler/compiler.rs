@@ -94,7 +94,7 @@ impl Compiler {
         // relies on the fact that a Beginloop label must be located *BEFORE* 
         // the *continue* expression
         let mut last_loop_start: usize = 0;
-        for (i, pre_intruction) in pre_instructions.iter_mut().enumerate() {
+        for pre_intruction in pre_instructions.iter_mut() {
             match *pre_intruction {
                 PreInstruction::AddrLabel( Addr { addr, kind: AddrKind::BeginLoop }) => {
                     // store the instruction index 
@@ -112,7 +112,7 @@ impl Compiler {
         // relies on the fact that a Endloop label must be located *AFTER* 
         // the *break* expression
         let mut last_loop_end: usize = 0;
-        for (i, pre_intruction) in pre_instructions.iter_mut().enumerate().rev() {
+        for pre_intruction in pre_instructions.iter_mut().rev() {
             match *pre_intruction {
                 PreInstruction::AddrLabel( Addr { addr, kind: AddrKind::EndLoop }) => {
                     // store the instruction index 
@@ -131,7 +131,7 @@ impl Compiler {
         let mut label_count: usize = 0;
         // collect labels
         for (i, pre_intruction) in pre_instructions.iter().enumerate() {
-            if let PreInstruction::AddrLabel( Addr { addr, kind }) = *pre_intruction {
+            if let PreInstruction::AddrLabel( Addr { addr, .. }) = *pre_intruction {
                 // store the instruction index 
                 label_to_offset.insert(addr, i - label_count);
                 label_count += 1;
@@ -201,8 +201,9 @@ impl Compiler {
                 PreInstruction::Minus => instructions.push(Minus),
                 PreInstruction::Plus => instructions.push(Plus),
                 PreInstruction::Not => instructions.push(Not),
-                PreInstruction::NewLoopStack => instructions.push(NewLoopStack),
-                PreInstruction::DelLoopStack => instructions.push(DelLoopStack),
+                PreInstruction::NewLoopCtx => instructions.push(NewLoopCtx),
+                PreInstruction::DelLoopCtx => instructions.push(DelLoopCtx),
+                PreInstruction::PopToLoopCtx => instructions.push(PopToLoopCtx),
                 // both must have been replaced by Goto
                 PreInstruction::Break | PreInstruction::Continue => {},
             }

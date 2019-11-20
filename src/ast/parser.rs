@@ -193,9 +193,10 @@ pub fn parse_flat_expressions(tokens: &[Token]) -> Result<Vec<FlatExp>, ParsingE
                     Some(Token { cursor, .. }) => {
                         return Err(ParsingError::new(
                             format!(
-                                "could not parse expression at line {}, column {}", 
+                                "could not parse expression at line {}, column {}:\n\t{:?}", 
                                 cursor.line + 1,
                                 cursor.column + 1,
+                                &unparsed_tokens[idx],
                             )
                         ));
                     },

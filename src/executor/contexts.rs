@@ -91,6 +91,16 @@ impl Context {
             }
         }
     }
+    
+    /// pop scopes until we reach a Loop Scope (preserve it in place)
+    pub fn pop_until_loop_scope(&mut self) {
+        while let Some( Scope { kind, .. }) = self.scopes.last() {
+            match kind {
+                ScopeKind::Loop => break,
+                _ => { let _ = self.scopes.pop();}
+            }
+        }
+    }
 
     /// pop a scope, no matter its kind
     pub fn pop_scope(&mut self) -> Option<Scope> {

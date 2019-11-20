@@ -1,10 +1,7 @@
-use std::collections::HashMap;
 use crate::compiler::Instruction;
 use crate::builtins::Value;
 use crate::executor::contexts::{
     Context,
-    Scope,
-    ScopeKind,
     ContextError,
 };
 
@@ -145,7 +142,7 @@ impl <'inst> Executor <'inst> {
                 self.store(name, value)?;
             },
             Val(ref value) => self.push_value(value.clone()),
-            // Functions
+            // Functions Context management
             FnCall => {
                 let value = self.pop_value()?; 
                 if let Value::Function(addr) = value {
@@ -170,9 +167,10 @@ impl <'inst> Executor <'inst> {
                 }
                 let _ = self.execution_pointers.pop();
             },
-            // LoopMangement
-            NewLoopStack => self.context.add_loop_scope(),
-            DelLoopStack => self.context.pop_loop_scope(),
+            // Loop Context Management
+            NewLoopCtx => self.context.add_loop_scope(),
+            DelLoopCtx => self.context.pop_loop_scope(),
+            PopToLoopCtx => self.context.pop_until_loop_scope(),
             // Stack management
             PushToNext(nb) => {
                 for _ in 0..nb {
@@ -611,6 +609,24 @@ mod tests {
         counter
         "#).unwrap();
         assert_eq!(val, Some(Num(3.)));
+        // test nested loops
+        let val = exec(r#"
+        let counter = 0;
+        while (true) {
+            if (counter > 2) {
+                while (true) {
+                    if (counter < -20) {
+                        break;
+                    }
+                    counter = counter - 1;
+                }
+                break;
+            }
+            counter = counter + 1;
+        }
+        counter
+        "#).unwrap();
+        assert_eq!(val, Some(Num(-21.)));
     }
     #[test]
     fn test_continue() {

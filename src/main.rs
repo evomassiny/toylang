@@ -28,11 +28,14 @@ fn main() -> std::io::Result<()> {
     // Compile into instructions
     let instructions = Compiler::compile(&ast.root).unwrap();
     // execute the instructions
+    println!("script compiled into:");
+    println!("{:>7} | Instruction", "Addr");
     for (i, inst) in instructions.iter().enumerate() {
-        println!("{:5} {:?}", i, inst);
+        println!("{:7} | {:?}", i, inst);
     }
     let mut executor = Executor::from_instructions(&instructions);
-    dbg!(executor.execute());
+    let value = executor.execute().expect("No value returned");
+    println!("\nExecution returned: {:#?}", value);
     Ok(())
 }
 

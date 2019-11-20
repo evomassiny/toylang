@@ -152,10 +152,12 @@ pub enum PreInstruction {
     /// remove the last stack
     /// then if any element are in the passthrough buffer push those elements to the current one
     DelStack,
-    /// Creates a new Loop scope
-    NewLoopStack,
-    /// remove the last loop stack
-    DelLoopStack,
+    /// Creates a new Loop context
+    NewLoopCtx,
+    /// remove the last loop context
+    DelLoopCtx,
+    /// remove the last loop context
+    PopToLoopCtx,
     // Native function
     // ... TODO
     // Binary Instructions
@@ -195,7 +197,7 @@ pub fn preprocess_break() -> Option<Vec<PreInstruction>> {
 
 /// Build the intructions needed to run a `Continue` expression
 pub fn preprocess_continue() -> Option<Vec<PreInstruction>> {
-    Some(vec![Continue])
+    Some(vec![PopToLoopCtx, Continue])
 }
 
 /// Build the intructions needed to run a `return` expression
@@ -530,7 +532,7 @@ pub fn preprocess_unary_op(op: &UnaryOp, mut sub_instructions: Vec<Vec<PreInstru
 
 /// Build the intructions needed to run WhileLoop
 /// * So `while (<cond_expr>) { <block_expr>}` is compiled as:
-///     NewLoopStack
+///     NewLoopCtx
 ///     Label 'start_loop'
 ///     <cond_expr>
 ///     GotoIf 'block'
@@ -539,7 +541,7 @@ pub fn preprocess_unary_op(op: &UnaryOp, mut sub_instructions: Vec<Vec<PreInstru
 ///     <block_expr>
 ///     Goto 'start_loop'
 ///     Label 'end_loop'
-///     DelLoopStack
+///     DelLoopCtx
 pub fn preprocess_while(mut sub_instructions: Vec<Vec<PreInstruction>>, labels: &mut LabelGenerator) -> Option<Vec<PreInstruction>> {
     // build label
     let begin = labels.begin_loop();
@@ -550,7 +552,7 @@ pub fn preprocess_while(mut sub_instructions: Vec<Vec<PreInstruction>>, labels: 
     let condition = sub_instructions.pop()?;
     // build the instruction set
     let mut instructions = Vec::new();
-    instructions.push(NewLoopStack);
+    instructions.push(NewLoopCtx);
     instructions.push(AddrLabel(begin));
     instructions.extend(condition);
     instructions.push(GotoIf(block_label.addr));
@@ -559,7 +561,7 @@ pub fn preprocess_while(mut sub_instructions: Vec<Vec<PreInstruction>>, labels: 
     instructions.extend(block);
     instructions.push(Goto(begin.addr));
     instructions.push(AddrLabel(end));
-    instructions.push(DelLoopStack);
+    instructions.push(DelLoopCtx);
     Some(instructions)
 }
 
@@ -840,7 +842,7 @@ mod test {
         assert_eq!(
             Compiler::preprocess(&ast.root).unwrap(),
             vec![
-                NewLoopStack,
+                NewLoopCtx,
                 AddrLabel(Addr { addr: 0, kind: AddrKind::BeginLoop }), // begin
                 Val(Num(2.)),
                 Load("a".into()),
@@ -856,7 +858,7 @@ mod test {
                 DelStack,
                 Goto(0),
                 AddrLabel(Addr { addr: 2, kind: AddrKind::EndLoop }), // block 
-                DelLoopStack,
+                DelLoopCtx,
             ],
         );
     }
