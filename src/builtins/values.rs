@@ -10,6 +10,31 @@ use std::{
     },
 };
 
+pub type NativeFn = fn(&mut Vec<Value>) -> Value;
+
+#[derive(Clone)]
+pub enum FnKind {
+    Address(usize),
+    Native(NativeFn),
+}
+impl std::fmt::Debug for FnKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Address(a) => write!(f, "Address {}", a),
+            Self::Native(nfn) => write!(f, "Native {:?}", *nfn as *const ()),
+        }
+    }
+}
+impl std::cmp::PartialEq for FnKind {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Address(s), Self::Address(o)) => s == o,
+            (Self::Native(s), Self::Native(o)) => (*s as *const ()) == (*o as *const ()),
+            _ => false
+        }
+    }
+}
+
 #[derive(Debug,Clone,PartialEq)]
 pub enum Value {
     /// any quoted string
@@ -18,8 +43,8 @@ pub enum Value {
     Num(f64),
     /// boolean `true` or `false`
     Bool(bool),
-    /// A function address
-    Function(usize),
+    /// A function
+    Function(FnKind),
     /// 
     Null,
     /// 
@@ -56,8 +81,8 @@ impl Value {
             },
             // both are bool
             (Bool(s), Bool(o)) => *s == *o,
-            (Function(addr_s), Function(addr_o)) => *addr_s == *addr_o,
             // both are function
+            (Function(fn_s), Function(fn_o)) => fn_s == fn_o,
             _ => false
         };
         Bool(equality)
@@ -121,7 +146,8 @@ impl std::fmt::Display for Value {
             Bool(boolean) => write!(f, "{}", boolean),
             Null => write!(f, "null"),
             // WARNING ! the actual js function script should be here
-            Function(addr) => write!(f, "function at {}", addr),
+            Function(FnKind::Address(addr)) => write!(f, "function at {}", addr),
+            Function(FnKind::Native(_)) => write!(f, "native function"),
             Undefined => write!(f, "undefined"),
             Str(ref s) => write!(f, "{}", s),
         }

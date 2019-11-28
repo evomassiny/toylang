@@ -66,7 +66,14 @@ pub fn match_semi_colomn_fenced(tokens: &[Option<&Token>]) -> Option<(FlatExp, V
 pub fn match_parenthesis_fenced(tokens: &[Option<&Token>]) -> Option<(FlatExp, Vec<usize>)> {
     let mut parent_count = 0;
     let mut consumed_tokens =  vec![];
-    for i in 0..tokens.len() {
+    match tokens[0] {
+        Some(&Token { kind: Separator(OpenParen), ..}) => {
+            consumed_tokens.push(0);
+            parent_count += 1;
+        }
+        _ => return None,
+    }
+    for i in 1..tokens.len() {
         match tokens[i] {
             Some(&Token { kind: Separator(OpenParen), ..}) => {
                 if parent_count == 0 { consumed_tokens.push(i); }
@@ -168,7 +175,7 @@ pub fn match_binary_op(tokens: &[Option<&Token>]) -> Option<(FlatExp, Vec<usize>
             _ => continue,
         }
     }
-    // parse logical operation (|, &)
+    // parse logical operation (||, &&)
     paren_count = 0;
     for i in 0..tokens.len() {
         match tokens[i] {
@@ -867,13 +874,13 @@ mod test {
 
     #[test]
     fn match_parenthesis_fenced_pattern() {
-        let tokens = lex("let a = (1 +1) * 2;").unwrap();
+        let tokens = lex("(1 +1) * 2;").unwrap();
         let unparsed_tokens: Vec<Option<&Token>> = tokens.iter().map(|t| Some(t)).collect();
         assert_eq!(
             patterns::match_parenthesis_fenced(&unparsed_tokens),
             Some((
                 FlatExp::FlatFenced,
-                vec![3, 7]
+                vec![0, 4]
             )),
             "Failed to match parenthesis statement"
         );

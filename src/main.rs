@@ -24,7 +24,7 @@ fn main() -> std::io::Result<()> {
     file.read_to_string(&mut src)?;
 
 	// build the ast
-    let ast = Ast::from_str(&src).unwrap();
+    let ast = Ast::from_str(&src).expect("Could not buid ast");
     // Compile into instructions
     let instructions = Compiler::compile(&ast.root).unwrap();
     // execute the instructions

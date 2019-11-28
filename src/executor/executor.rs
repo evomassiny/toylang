@@ -1,5 +1,5 @@
 use crate::compiler::Instruction;
-use crate::builtins::Value;
+use crate::builtins::{FnKind,Value};
 use crate::executor::contexts::{
     Context,
     ContextError,
@@ -33,7 +33,7 @@ pub enum ExecStatus {
 
 pub struct Executor<'inst> {
     pub instructions: &'inst [Instruction],
-    context: Context,
+    pub context: Context,
     passthrough: Vec<Value>,
     execution_pointers: Vec<usize>,
 }
@@ -46,6 +46,7 @@ impl <'inst> Executor <'inst> {
             execution_pointers: vec![0],
             context: Context::new(),
         }
+
     }
 
     /// load the value referenced by `name`
@@ -145,18 +146,27 @@ impl <'inst> Executor <'inst> {
             // Functions Context management
             FnCall => {
                 let value = self.pop_value()?; 
-                if let Value::Function(addr) = value {
-                    // go to the function body
-                    self.execution_pointers.push(addr);
-                    // Add a new scope
-                    self.context.add_function_scope();
-                    // pass in arguments
-                    while let Some(value) = self.passthrough.pop() {
-                        self.push_value(value);
-                    }
-                    return Ok(ExecStatus::Running);
-                } else {
-                    return Err(exec_error!("value is not callable"));
+                match value {
+                    Value::Function(FnKind::Address(addr)) => {
+                        // go to the function body
+                        self.execution_pointers.push(addr);
+                        // Add a new scope
+                        self.context.add_function_scope();
+                        // pass in arguments
+                        while let Some(value) = self.passthrough.pop() {
+                            self.push_value(value);
+                        }
+                        return Ok(ExecStatus::Running);
+                    },
+                    Value::Function(FnKind::Native(func)) => {
+                        let mut args = Vec::new();
+                        // pass in arguments
+                        while let Some(value) = self.passthrough.pop() {
+                            args.push(value);
+                        }
+                        self.push_value(func(&mut args));
+                    },
+                    _ => return Err(exec_error!("value is not callable")),
                 }
             },
             FnRet => {
@@ -296,6 +306,37 @@ impl <'inst> Executor <'inst> {
         match self.pop_value() {
             Ok(value) => Ok(Some(value)),
             Err(_) => Ok(None),
+        }
+    }
+
+    /// Call a function defined in self.instructions
+    pub fn call_function(&mut self, name: &str, mut args: Vec<Value>) -> Result<Option<Value>, ExecutionError> {
+        // assert that the script has ran
+        if let Some(ip) = self.execution_pointers.last() {
+            if *ip <= self.execution_pointers.len() {
+                self.execute()?;
+            }
+        } else {
+            self.execute()?;
+        }
+        // perform the call
+        match self.load(name) {
+            Value::Function(FnKind::Address(addr)) => {
+                // go to the function body
+                self.execution_pointers.push(addr);
+                // Add a new scope
+                self.context.add_function_scope();
+                // pass in arguments
+                for arg in args {
+                    self.push_value(arg);
+                }
+                return self.execute();
+            },
+            Value::Function(FnKind::Native(func)) => {
+                let v = func(&mut args);
+                return Ok(Some(v));
+            },
+            v => return Err(exec_error!(format!("{} not callable, it's: {}", name, v))),
         }
     }
 }
@@ -640,6 +681,61 @@ mod tests {
         counter
         "#).unwrap();
         assert_eq!(val, Some(Num(2.)));
+    }
+    #[test]
+    fn test_native_fn() {
+        // native function without argument
+        fn give_true(_ : &mut Vec<Value>) -> Value { Bool(true) }
+        
+        let src = "let a = give_true(); a";
+        let ast = Ast::from_str(&src).expect("Could not build ast");
+        let instructions = Compiler::compile(&ast.root).expect("compiler error");
+        let mut executor = Executor::from_instructions(&instructions);
+        // add the function
+        let _ = executor.context.add_native_function("give_true", give_true);
+
+        assert_eq!(
+            executor.execute().unwrap(),
+            Some(Bool(true))
+        );
+        
+        // native function with argument
+        fn add_two(val : &mut Vec<Value>) -> Value { 
+            if let Some(Num(num)) = val.pop() {
+                return Num(num + 2.);
+            }
+            Null
+        }
+        let src = "let a = add_two(22); a";
+        let ast = Ast::from_str(&src).expect("Could not build ast");
+        let instructions = Compiler::compile(&ast.root).expect("compiler error");
+        let mut executor = Executor::from_instructions(&instructions);
+        // add the function
+        let _ = executor.context.add_native_function("add_two", add_two);
+
+        assert_eq!(
+            executor.execute().unwrap(),
+            Some(Num(24.))
+        );
+    }
+    #[test]
+    fn test_script_function_call() {
+        let src = r#"
+        function add_two(a) {
+            return a + 2;
+        }
+        "#;
+        let ast = Ast::from_str(&src).expect("Could not build ast");
+        let instructions = Compiler::compile(&ast.root).expect("compiler error");
+        let mut executor = Executor::from_instructions(&instructions);
+
+        assert_eq!(
+            executor.call_function(
+                "add_two",
+                vec![Num(22.)],
+            ).unwrap(),
+            Some(Num(24.))
+        );
     }
 }
 

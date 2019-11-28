@@ -1,9 +1,9 @@
-use crate::builtins::Value;
+use crate::builtins::{FnKind,NativeFn,Value};
 use std::collections::HashMap;
 
 #[derive(Debug)]
 pub struct ContextError {
-    pub msg: String    
+    pub msg: String,
 }
 impl std::error::Error for ContextError {}
 impl std::fmt::Display for ContextError {
@@ -13,8 +13,10 @@ impl std::fmt::Display for ContextError {
 }
 macro_rules! context_error {
     ($msg:expr) => {
-        ContextError { msg: format!("Execution error: {}", $msg) }
-    }
+        ContextError {
+            msg: format!("Execution error: {}", $msg),
+        }
+    };
 }
 
 pub enum ScopeKind {
@@ -25,12 +27,12 @@ pub enum ScopeKind {
 
 pub struct Scope {
     values: Vec<Value>,
-    bindings: HashMap<String,Value>,
+    bindings: HashMap<String, Value>,
     kind: ScopeKind,
 }
 impl Scope {
     fn new(kind: ScopeKind) -> Self {
-        Self { 
+        Self {
             values: Vec::new(),
             bindings: HashMap::new(),
             kind: kind,
@@ -38,19 +40,19 @@ impl Scope {
     }
 }
 
-/// A `Context` defines a set of scopes, 
+/// A `Context` defines a set of scopes,
 /// reflecting the state of an interpreter based on stack machine.
 /// It is itself a stack of scopes.
 ///
 /// A scope represents 2 things:
 /// * the references (bindings) and their associated values
-/// * a register stack (if that make sense...) which is just a storage 
+/// * a register stack (if that make sense...) which is just a storage
 /// for the temporary results of each expressions
 ///
 /// A `Context` allows an Executor to keep track of its memory
 /// during the instructions evalutation.
 pub struct Context {
-    scopes: Vec<Scope>
+    scopes: Vec<Scope>,
 }
 
 impl Context {
@@ -74,30 +76,32 @@ impl Context {
 
     /// pop scopes until we poped one Function Scope
     pub fn pop_function_scope(&mut self) {
-        while let Some( Scope { kind, .. }) = self.scopes.pop() {
+        while let Some(Scope { kind, .. }) = self.scopes.pop() {
             match kind {
                 ScopeKind::Function => break,
                 _ => {}
             }
         }
     }
-    
+
     /// pop scopes until we poped one Loop Scope
     pub fn pop_loop_scope(&mut self) {
-        while let Some( Scope { kind, .. }) = self.scopes.pop() {
+        while let Some(Scope { kind, .. }) = self.scopes.pop() {
             match kind {
                 ScopeKind::Loop => break,
                 _ => {}
             }
         }
     }
-    
+
     /// pop scopes until we reach a Loop Scope (preserve it in place)
     pub fn pop_until_loop_scope(&mut self) {
-        while let Some( Scope { kind, .. }) = self.scopes.last() {
+        while let Some(Scope { kind, .. }) = self.scopes.last() {
             match kind {
                 ScopeKind::Loop => break,
-                _ => { let _ = self.scopes.pop();}
+                _ => {
+                    let _ = self.scopes.pop();
+                }
             }
         }
     }
@@ -114,7 +118,7 @@ impl Context {
             None => {
                 let mut scope = Scope::new(ScopeKind::Block);
                 scope.values.push(val);
-            },
+            }
         }
     }
 
@@ -131,8 +135,23 @@ impl Context {
         }
     }
 
+    pub fn add_native_function(
+        &mut self,
+        name: &str,
+        func: NativeFn,
+    ) -> Result<(), ContextError> {
+        self.scopes
+            .last_mut()
+            .ok_or(context_error!("scopes stack is empty"))?
+            .bindings
+            .insert(name.to_string(), Value::Function(FnKind::Native(func)));
+        Ok(())
+
+    }
+
     pub fn create_ref(&mut self, name: &str) -> Result<(), ContextError> {
-        self.scopes.last_mut()
+        self.scopes
+            .last_mut()
             .ok_or(context_error!("scopes stack is empty"))?
             .bindings
             .insert(name.to_string(), Value::Undefined);
@@ -157,5 +176,4 @@ impl Context {
         }
         Err(context_error!(format!("Unknown reference {}", name)))
     }
-
 }

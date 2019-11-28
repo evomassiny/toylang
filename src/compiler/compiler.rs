@@ -3,7 +3,7 @@ use crate::ast::Expr;
 use crate::compiler::preprocessors::{PreValue,PreInstruction,LabelGenerator,Addr,AddrKind};
 use crate::compiler::preprocessors as pp;
 use crate::compiler::instructions::Instruction;
-use crate::builtins::Value;
+use crate::builtins::{Value,FnKind};
 
 
 
@@ -163,7 +163,7 @@ impl Compiler {
                         PreValue::Num(n) => Num(n),
                         PreValue::Function(label) => {
                             let offset = label_to_offset.get(&label)?;
-                            Function(*offset)
+                            Function(FnKind::Address(*offset))
                         },
                         PreValue::Null => Null,
                         PreValue::Undefined => Undefined,
