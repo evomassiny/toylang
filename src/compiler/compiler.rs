@@ -6,24 +6,30 @@ use crate::compiler::instructions::Instruction;
 use crate::builtins::{Value,FnKind};
 
 
-/// A Node in the AST, and its dependancies
+/// A Node in the AST
 pub struct AstNode <'n> {
+    /// An Ast Expression
     pub expression: &'n Expr,
+    /// how many sub expressions `expressions` holds.
     pub dependancies: usize,
 }
 
 /// An Iterator over an Abstract Syntaxe Tree
-/// It yield every nodes of a tree from right to left,
+/// It yields every nodes of a tree from right to left,
+/// starting from the leaves.
 /// TODO: it also keep track of the `scope` of each node
 pub struct AstTraverser <'iter>{
     // the node stack we are traversing
+    // each element is one level deeper (in the AST)
+    // than the previous one.
     nodes: Vec<&'iter Expr>,
     // the index of the node we are crawling
     // for each level 
     crawling_idx: Vec<usize>,
 }
 impl <'iter> AstTraverser <'iter> {
-    /// Build an A
+
+    /// Build an iterator over the AST starting from `Expr`
     pub fn new(expression: &'iter Expr) -> Self {
         Self {
             nodes: vec![expression],
