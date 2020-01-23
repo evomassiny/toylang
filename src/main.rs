@@ -1,13 +1,22 @@
+//! This crates is a naïve attempt to build a Javascript interpretor from scratch.
+//! Its only goal is for me to learn language design,
+//! It will most likely never be functional.
+//!
 #[macro_use]
 extern crate lazy_static;
 use std::fs::File;
 use std::io::prelude::*;
 use std::env::args;
 
-mod compiler;
-mod executor;
-mod ast;
-mod builtins;
+/// Contains the methods that turns javascript source into an
+/// Abstract Syntaxe Tree
+pub mod ast;
+/// Contains the code that turns an AST into bytecode
+pub mod compiler;
+/// Contains the interpretor that execute bytecode
+pub mod executor;
+/// Holds all the javascript builtin standard llibrary
+pub mod builtins;
 
 use ast::Ast;
 use compiler::Compiler;

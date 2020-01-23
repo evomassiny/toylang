@@ -19,6 +19,7 @@ macro_rules! context_error {
     };
 }
 
+/// This enum identities 3 sets of scopes
 pub enum ScopeKind {
     Function,
     Block,
@@ -41,7 +42,7 @@ impl Scope {
 }
 
 /// A `Context` defines a set of scopes,
-/// reflecting the state of an interpreter based on stack machine.
+/// reflecting the state of a Byte code interpreter based on stack machine.
 /// It is itself a stack of scopes.
 ///
 /// A scope represents 2 things:

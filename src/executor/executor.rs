@@ -26,15 +26,21 @@ macro_rules! exec_error {
     }
 }
 
+/// Describes the states of an Exectutor
 pub enum ExecStatus {
     Running, 
     Finished,
 }
 
+/// A byte code interpreter
 pub struct Executor<'inst> {
+    /// A slice of byte code Instruction
     pub instructions: &'inst [Instruction],
+    /// The execution context: the script memory
     pub context: Context,
+    /// an internal buffer, uses to store values between contexts
     passthrough: Vec<Value>,
+    /// the script execution stack
     execution_pointers: Vec<usize>,
 }
 
@@ -735,6 +741,39 @@ mod tests {
                 vec![Num(22.)],
             ).unwrap(),
             Some(Num(24.))
+        );
+    }
+    #[test]
+    fn test_variable_scope() {
+        let src = r#"
+        function level_0() {
+             let a = 1;
+             function level_1() {
+                 a = a + 1; 
+                 return a;
+             };
+             return level_1;
+        }
+        let f = level_0();
+        "#;
+        let ast = Ast::from_str(&src).expect("Could not build ast");
+        let instructions = Compiler::compile(&ast.root).expect("compiler error");
+        let mut executor = Executor::from_instructions(&instructions);
+
+        assert_eq!(
+            executor.call_function(
+                "f",
+                vec![],
+            ).unwrap(),
+            Some(Num(2.))
+        );
+
+        assert_eq!(
+            executor.call_function(
+                "f",
+                vec![],
+            ).unwrap(),
+            Some(Num(3.))
         );
     }
 }

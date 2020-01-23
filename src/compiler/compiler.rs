@@ -6,55 +6,96 @@ use crate::compiler::instructions::Instruction;
 use crate::builtins::{Value,FnKind};
 
 
+/// A Node in the AST, and its dependancies
+pub struct AstNode <'n> {
+    pub expression: &'n Expr,
+    pub dependancies: usize,
+}
+
+/// An Iterator over an Abstract Syntaxe Tree
+/// It yield every nodes of a tree from right to left,
+/// TODO: it also keep track of the `scope` of each node
+pub struct AstTraverser <'iter>{
+    // the node stack we are traversing
+    nodes: Vec<&'iter Expr>,
+    // the index of the node we are crawling
+    // for each level 
+    crawling_idx: Vec<usize>,
+}
+impl <'iter> AstTraverser <'iter> {
+    /// Build an A
+    pub fn new(expression: &'iter Expr) -> Self {
+        Self {
+            nodes: vec![expression],
+            crawling_idx: vec![0],
+        }
+    }
+}
+impl <'iter> Iterator for AstTraverser <'iter> {
+    type Item = AstNode<'iter>;
+
+    /// Traverses a tree from right to left,
+    /// assert that every AST node is yielded right after 
+    /// its sub-AST node
+    fn next(&mut self) -> Option<Self::Item> {
+
+        while self.nodes.len() > 0 {
+            let idx = self.nodes.len() -1;
+
+            // Crawl sub nodes first
+            let sub_count = self.nodes[idx].count_sub_expressions();
+            if self.crawling_idx[idx] < sub_count {
+                self.crawling_idx.push(0);
+                // assert that we tarverse the tree from right to left
+                let next_idx = sub_count - self.crawling_idx[idx] - 1;
+                if let Some(sub_node) = self.nodes[idx].get_sub_expression(next_idx) {
+                    self.nodes.push(&sub_node);
+                }
+                self.crawling_idx[idx] += 1;
+                continue;
+            }
+
+            // yield the current node, 
+            // at this point each of its sub-nodes has been yielded
+            let crawled_node = self.nodes.pop()?;
+            let _ = self.crawling_idx.pop();
+
+            return Some(AstNode {
+                expression: crawled_node,
+                dependancies: sub_count,
+            });
+            
+        }
+        None
+    }
+}
 
 #[derive(Debug)]
 pub struct Compiler {}
 
 impl Compiler {
-
     /// compile an AST into a vector of PreInstruction
     /// an intermediate representation of the actual Instruction set
     /// with unsolved address (labels)
     pub fn preprocess(expression: &Expr) -> Option<Vec<PreInstruction>> {
         let mut instructions: Vec<Vec<PreInstruction>> = Vec::new();
-        // traverse the AST
-        // and build an instructions list
-        // executable by a simple stack machine
-        let mut nodes: Vec<&Expr> = Vec::new();
-        let mut dep_count: Vec<usize> = Vec::new();
-
         // a struct used to build uniq labels
         let mut labels = LabelGenerator::new();
 
-        dep_count.push(0);
-        nodes.push(expression);
-        // traverse the tree from right to left
-        'tree_traversal: while nodes.len() > 0 {
-            let idx = nodes.len() -1;
-            let node = &nodes[idx];
+        // traverse the AST for right to left, leaves first
+        // and build an instructions list
+        // executable by a simple stack machine
+        for AstNode { expression, dependancies } in AstTraverser::new(expression) {
 
-            // add node dependancies
-            let sub_expr_count = node.count_sub_expressions();
-            if dep_count[idx] < sub_expr_count {
-                dep_count.push(0);
-                // assert that we tarverse the tree from right to left
-                let next_idx = sub_expr_count - dep_count[idx] - 1;
-                if let Some(sub_node) = node.get_sub_expression(next_idx) {
-                    nodes.push(&sub_node);
-                }
-                dep_count[idx] += 1;
-                continue 'tree_traversal;
-            }
-
-            // at this point, all sub-expressions were already been solved
-            // put them in a dedicated Vector, in the correct order
+            // Collect the sub-expression instructions, if any
             let mut sub_instructions = Vec::new();
-            for _ in 0..sub_expr_count {
+            for _ in 0..dependancies {
                 sub_instructions.push(instructions.pop()?);
             }
-            // Build the intruction set needed to evaluate the node expression
+
+            // Build the intruction set needed to evaluate the current expression
             use Expr::*;
-            let insts: Vec<PreInstruction> = match *node {
+            let insts: Vec<PreInstruction> = match expression {
                 Const(c) => pp::preprocess_const(c)?,
                 Return(_) => pp::preprocess_return(sub_instructions)?,
                 If(..) => pp::preprocess_if(sub_instructions, &mut labels)?,
@@ -72,14 +113,11 @@ impl Compiler {
                 Break => pp::preprocess_break()?,
                 Continue => pp::preprocess_continue()?,
             };
+            // Push those expression to the 
             if insts.len() > 0 {
                 instructions.push(insts);
             }
 
-            // pop the current node, it's been solved.
-            let _ = nodes.pop();
-            let _ = dep_count.pop();
-            
         }
         Some(instructions.pop()?)
     }
@@ -90,7 +128,7 @@ impl Compiler {
         // compile into proto instructions
         let mut pre_instructions = Self::preprocess(ast)?;
         
-        // solve continue as Goto labels
+        // solve 'continue' as Goto labels
         // relies on the fact that a Beginloop label must be located *BEFORE* 
         // the *continue* expression
         let mut last_loop_start: usize = 0;

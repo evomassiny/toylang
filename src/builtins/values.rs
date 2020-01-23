@@ -10,8 +10,12 @@ use std::{
     },
 };
 
+/// The signature of a Native Function
 pub type NativeFn = fn(&mut Vec<Value>) -> Value;
 
+/// Describes the 2 kinds of Functions:
+/// * Address => a location in the byte code
+/// * Native => a rust function
 #[derive(Clone)]
 pub enum FnKind {
     Address(usize),
