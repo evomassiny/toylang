@@ -5,6 +5,13 @@ use crate::compiler::expression_compilers as ec;
 use crate::compiler::instructions::Instruction;
 use crate::builtins::{Value,FnKind};
 
+/// the name of the global execution context
+const GLOBAL_SCOPE_LABEL: &'static str = "global";
+
+/// The string used to separate the labels
+/// for instance a function "foo" defined in the global scope
+/// will have a execution context named "Global__foo"
+const SCOPE_LABEL_SEPARATOR: &'static str = "__";
 
 /// A Node in the AST
 pub struct AstNode <'n> {
@@ -12,12 +19,51 @@ pub struct AstNode <'n> {
     pub expression: &'n Expr,
     /// how many sub expressions `expressions` holds.
     pub dependancies: usize,
+    /// the label of the scope chain representing the lexical scope of the node
+    scope_label_chain: Vec<Option<String>>,
+}
+impl <'n> AstNode <'n> {
+
+    /// returns the label of the lexical scope 
+    /// (eg the execution context)
+    /// of this AstNode
+    fn scope_label(&self) -> String {
+        // filter out the `None` instance, which represents
+        // AST nodes that don't defines a new scope
+        // then join each scope label into one
+        self.scope_label_chain
+            .iter()
+            .filter_map(Option::as_ref)
+            .map(ToString::to_string)
+            .collect::<Vec<String>>()
+            .join(SCOPE_LABEL_SEPARATOR)
+    }
+
+    /// returns the label of the lexical scope 
+    /// (eg the execution context)
+    /// of this AstNode
+    fn parent_scope_label(&self) -> String {
+        // filter out the `None` instance, which represents
+        // AST nodes that don't defines a new scope
+        let mut labels = self.scope_label_chain
+            .iter()
+            .filter_map(Option::as_ref)
+            .collect::<Vec<&String>>();
+
+        // remove the last one, to get the parent
+        // scope
+        let _ = labels.pop();
+        // join them into one big label
+        labels.into_iter()
+            .map(ToString::to_string)
+            .collect::<Vec<String>>()
+            .join(SCOPE_LABEL_SEPARATOR)
+    }
 }
 
 /// An Iterator over an Abstract Syntaxe Tree
 /// It yields every nodes of a tree from right to left,
 /// starting from the leaves.
-/// TODO: it also keep track of the `scope` of each node
 pub struct AstTraverser <'iter>{
     // the node stack we are traversing
     // each element is one level deeper (in the AST)
@@ -26,6 +72,8 @@ pub struct AstTraverser <'iter>{
     // the index of the node we are crawling
     // for each level 
     crawling_idx: Vec<usize>,
+    // the label chain of the ast node's scope
+    scopes_label_chain: Vec<Option<String>>
 }
 impl <'iter> AstTraverser <'iter> {
 
@@ -34,6 +82,7 @@ impl <'iter> AstTraverser <'iter> {
         Self {
             nodes: vec![expression],
             crawling_idx: vec![0],
+            scopes_label_chain: vec![],
         }
     }
 }
@@ -47,6 +96,19 @@ impl <'iter> Iterator for AstTraverser <'iter> {
 
         while self.nodes.len() > 0 {
             let idx = self.nodes.len() -1;
+
+            // set node scope label
+            let scope_label: Option<String> = match (idx, self.nodes[idx]) {
+                // the root node defines the global scope
+                (0, _) => Some(GLOBAL_SCOPE_LABEL.into()),
+                // functions define a label composed of their name and their AST node index
+                (i, Expr::FunctionDecl(ref name, ..)) => {
+                    Some(format!("{}_{}", &name, &i))
+                },
+                // any other expression does not defines a scope
+                (_, _) => None,
+            };
+            self.scopes_label_chain.push(scope_label);
 
             // Crawl sub nodes first
             let sub_count = self.nodes[idx].count_sub_expressions();
@@ -69,6 +131,7 @@ impl <'iter> Iterator for AstTraverser <'iter> {
             return Some(AstNode {
                 expression: crawled_node,
                 dependancies: sub_count,
+                scope_label_chain: self.scopes_label_chain.clone(),
             });
             
         }
@@ -92,33 +155,34 @@ impl Compiler {
         // traverse the AST for right to left, leaves first
         // and build an instructions list
         // executable by a simple stack machine
-        for AstNode { expression, dependancies } in AstTraverser::new(expression) {
+        //for AstNode { expression, dependancies, .. } in AstTraverser::new(expression) {
+        for ast_node in AstTraverser::new(expression) {
 
             // Collect the sub-expression instructions, if any
             let mut sub_instructions = Vec::new();
-            for _ in 0..dependancies {
+            for _ in 0..ast_node.dependancies {
                 sub_instructions.push(instructions.pop()?);
             }
 
             // Build the intruction set needed to evaluate the current expression
             use Expr::*;
-            let insts: Vec<ProtoInstruction> = match expression {
-                Const(c) => ec::preprocess_const(c)?,
-                Return(_) => ec::preprocess_return(sub_instructions)?,
-                If(..) => ec::preprocess_if(sub_instructions, &mut labels)?,
-                Block(..) => ec::preprocess_block(sub_instructions)?,
-                LetDecl(name, _) => ec::preprocess_let(name, sub_instructions)?,
-                Local(id) => ec::preprocess_local(id)?,
-                Assign(id, ..) => ec::assign_to_instructions(id, sub_instructions)?,
-                Call(..) => ec::preprocess_call(sub_instructions)?,
+            let insts: Vec<ProtoInstruction> = match ast_node.expression {
+                Const(c) => ec::compile_const(c)?,
+                Return(_) => ec::compile_return(sub_instructions)?,
+                If(..) => ec::compile_if(sub_instructions, &mut labels)?,
+                Block(..) => ec::compile_block(sub_instructions)?,
+                LetDecl(name, _) => ec::compile_let(name, sub_instructions)?,
+                Local(id) => ec::compile_local(id)?,
+                Assign(id, ..) => ec::compile_assign(id, sub_instructions)?,
+                Call(..) => ec::compile_call(sub_instructions)?,
                 FunctionDecl(name, args, _block) => 
-                    ec::preprocess_function_decl(sub_instructions, name, args, &mut labels)?,
+                    ec::compile_function_decl(sub_instructions, name, args, &mut labels)?,
                 BinaryOp(op, ..) => 
-                    ec::preprocess_binary_op(op, sub_instructions, &mut labels)?,
-                UnaryOp(op, ..) => ec::preprocess_unary_op(op, sub_instructions)?,
-                WhileLoop(..) => ec::preprocess_while(sub_instructions, &mut labels)?,
-                Break => ec::preprocess_break()?,
-                Continue => ec::preprocess_continue()?,
+                    ec::compile_binary_op(op, sub_instructions, &mut labels)?,
+                UnaryOp(op, ..) => ec::compile_unary_op(op, sub_instructions)?,
+                WhileLoop(..) => ec::compile_while(sub_instructions, &mut labels)?,
+                Break => ec::compile_break()?,
+                Continue => ec::compile_continue()?,
             };
             // Push those expression to the 
             if insts.len() > 0 {

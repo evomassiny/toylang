@@ -18,17 +18,17 @@ use crate::ast::{
 
 
 /// Build the intructions needed to run a `Const` expression
-pub fn preprocess_const(c: &Const) -> Option<Vec<ProtoInstruction>> {
+pub fn compile_const(c: &Const) -> Option<Vec<ProtoInstruction>> {
     Some(vec![Val(ProtoValue::from_const(c))])
 }
 
 /// Build the intructions needed to run a `Break` expression
-pub fn preprocess_break() -> Option<Vec<ProtoInstruction>> {
+pub fn compile_break() -> Option<Vec<ProtoInstruction>> {
     Some(vec![Break])
 }
 
 /// Build the intructions needed to run a `Continue` expression
-pub fn preprocess_continue() -> Option<Vec<ProtoInstruction>> {
+pub fn compile_continue() -> Option<Vec<ProtoInstruction>> {
     Some(vec![PopToLoopCtx, Continue])
 }
 
@@ -38,7 +38,7 @@ pub fn preprocess_continue() -> Option<Vec<ProtoInstruction>> {
 ///     <expr>
 ///     PushToNext(1)
 ///     FnRet
-pub fn preprocess_return(mut sub_instructions: Vec<Vec<ProtoInstruction>>) -> Option<Vec<ProtoInstruction>> {
+pub fn compile_return(mut sub_instructions: Vec<Vec<ProtoInstruction>>) -> Option<Vec<ProtoInstruction>> {
     let mut instructions = Vec::new();
     match sub_instructions.pop() {
         Some(sub_instr) => {
@@ -64,7 +64,7 @@ pub fn preprocess_return(mut sub_instructions: Vec<Vec<ProtoInstruction>>) -> Op
 ///     ClearStack
 ///     <expr_b>
 ///     DelStack
-pub fn preprocess_block(sub_instructions: Vec<Vec<ProtoInstruction>>) -> Option<Vec<ProtoInstruction>> {
+pub fn compile_block(sub_instructions: Vec<Vec<ProtoInstruction>>) -> Option<Vec<ProtoInstruction>> {
     let mut instructions: Vec<ProtoInstruction> = Vec::new();
     instructions.push(NewStack);
     for (i, sub_inst) in sub_instructions.into_iter().enumerate() {
@@ -87,7 +87,7 @@ pub fn preprocess_block(sub_instructions: Vec<Vec<ProtoInstruction>>) -> Option<
 ///     AddrLabel 'label_true'
 ///     <expr_true>
 ///     AddrLabel 'end'
-pub fn preprocess_if(mut sub_instructions: Vec<Vec<ProtoInstruction>>, labels: &mut LabelGenerator) -> Option<Vec<ProtoInstruction>> {
+pub fn compile_if(mut sub_instructions: Vec<Vec<ProtoInstruction>>, labels: &mut LabelGenerator) -> Option<Vec<ProtoInstruction>> {
     let mut instructions = Vec::new();
     let true_block_label = labels.jump_to();
     let end = labels.jump_to();
@@ -121,7 +121,7 @@ pub fn preprocess_if(mut sub_instructions: Vec<Vec<ProtoInstruction>>, labels: &
 ///     Store 'id'
 /// *`let id;`  is compiled as:
 ///     NewRef 'id'
-pub fn preprocess_let(id: &str, mut sub_instructions: Vec<Vec<ProtoInstruction>>) -> Option<Vec<ProtoInstruction>> {
+pub fn compile_let(id: &str, mut sub_instructions: Vec<Vec<ProtoInstruction>>) -> Option<Vec<ProtoInstruction>> {
     let mut instructions = Vec::new();
     if let Some(sub_inst) = sub_instructions.pop() {
         instructions.extend(sub_inst);
@@ -136,7 +136,7 @@ pub fn preprocess_let(id: &str, mut sub_instructions: Vec<Vec<ProtoInstruction>>
 /// Build the instructions needed to run a Local expression.
 /// `a`  is compiled as:
 ///     Load 'a'
-pub fn preprocess_local(id: &str) -> Option<Vec<ProtoInstruction>> {
+pub fn compile_local(id: &str) -> Option<Vec<ProtoInstruction>> {
     Some(vec![Load(id.into())])
 }
 
@@ -147,7 +147,7 @@ pub fn preprocess_local(id: &str) -> Option<Vec<ProtoInstruction>> {
 ///     PushToNext(2)   // push the 2 args
 ///     <expr_called>
 ///     FnCall
-pub fn preprocess_call(mut sub_instructions: Vec<Vec<ProtoInstruction>>) -> Option<Vec<ProtoInstruction>> {
+pub fn compile_call(mut sub_instructions: Vec<Vec<ProtoInstruction>>) -> Option<Vec<ProtoInstruction>> {
     let mut instructions = Vec::new();
     // set in order <arg 2>, <arg 1>, <arg 0>, <expr called> 
     sub_instructions.reverse();
@@ -189,7 +189,7 @@ pub fn preprocess_call(mut sub_instructions: Vec<Vec<ProtoInstruction>>) -> Opti
 ///     
 /// Note: this function will remove the `NewStack` and `DelStack` of the function block
 /// TODO: replace `name` by an expression
-pub fn preprocess_function_decl(
+pub fn compile_function_decl(
     mut sub_instructions: Vec<Vec<ProtoInstruction>>,
     name: &str,
     args: &Vec<String>,
@@ -244,7 +244,7 @@ pub fn preprocess_function_decl(
 ///     <expr_b>
 ///     <expr_a>
 ///     Add
-pub fn preprocess_numerical_op(op: &NumericalOp, mut sub_instructions: Vec<Vec<ProtoInstruction>>) -> Option<Vec<ProtoInstruction>> {
+pub fn compile_numerical_op(op: &NumericalOp, mut sub_instructions: Vec<Vec<ProtoInstruction>>) -> Option<Vec<ProtoInstruction>> {
     let mut instructions = Vec::new();
     // last instruction must be at the bottom of the stack
     instructions.extend(sub_instructions.pop()?);
@@ -267,7 +267,7 @@ pub fn preprocess_numerical_op(op: &NumericalOp, mut sub_instructions: Vec<Vec<P
 ///     <expr_b>
 ///     <expr_a>
 ///     GreaterThan
-pub fn preprocess_comparison_op(op: &ComparisonOp, mut sub_instructions: Vec<Vec<ProtoInstruction>>) -> Option<Vec<ProtoInstruction>> {
+pub fn compile_comparison_op(op: &ComparisonOp, mut sub_instructions: Vec<Vec<ProtoInstruction>>) -> Option<Vec<ProtoInstruction>> {
     let mut instructions = Vec::new();
     // last instruction must be at the bottom of the stack
     instructions.extend(sub_instructions.pop()?);
@@ -301,7 +301,7 @@ pub fn preprocess_comparison_op(op: &ComparisonOp, mut sub_instructions: Vec<Vec
 ///     <expr_b>
 ///     Or
 ///     AddrLabel 'end'
-pub fn preprocess_logical_op(op: &LogicalOp, mut sub_instructions: Vec<Vec<ProtoInstruction>>, labels: &mut LabelGenerator) -> Option<Vec<ProtoInstruction>> {
+pub fn compile_logical_op(op: &LogicalOp, mut sub_instructions: Vec<Vec<ProtoInstruction>>, labels: &mut LabelGenerator) -> Option<Vec<ProtoInstruction>> {
     // avoid evaluating the function if were not calling it
     let right_hand = sub_instructions.pop()?;
     // process the left hand of the `and`
@@ -335,7 +335,7 @@ pub fn preprocess_logical_op(op: &LogicalOp, mut sub_instructions: Vec<Vec<Proto
 /// So `id = <expr>` is compiled as:
 ///     <expr>
 ///     Assign(id)
-pub fn assign_to_instructions(name: &str, mut sub_instructions: Vec<Vec<ProtoInstruction>>) -> Option<Vec<ProtoInstruction>> {
+pub fn compile_assign(name: &str, mut sub_instructions: Vec<Vec<ProtoInstruction>>) -> Option<Vec<ProtoInstruction>> {
     let mut instructions = sub_instructions.pop()?;
     instructions.push(Store(name.into()));
     Some(instructions)
@@ -351,7 +351,7 @@ pub fn assign_to_instructions(name: &str, mut sub_instructions: Vec<Vec<ProtoIns
 /// * So `- <expr>` is compiled as:
 ///     <expr>
 ///     Not
-pub fn preprocess_unary_op(op: &UnaryOp, mut sub_instructions: Vec<Vec<ProtoInstruction>>) -> Option<Vec<ProtoInstruction>> {
+pub fn compile_unary_op(op: &UnaryOp, mut sub_instructions: Vec<Vec<ProtoInstruction>>) -> Option<Vec<ProtoInstruction>> {
     let mut instructions = sub_instructions.pop()?;
     let inst = match *op {
         UnaryOp::Minus => ProtoInstruction::Minus,
@@ -374,7 +374,7 @@ pub fn preprocess_unary_op(op: &UnaryOp, mut sub_instructions: Vec<Vec<ProtoInst
 ///     Goto 'start_loop'
 ///     Label 'end_loop'
 ///     DelLoopCtx
-pub fn preprocess_while(mut sub_instructions: Vec<Vec<ProtoInstruction>>, labels: &mut LabelGenerator) -> Option<Vec<ProtoInstruction>> {
+pub fn compile_while(mut sub_instructions: Vec<Vec<ProtoInstruction>>, labels: &mut LabelGenerator) -> Option<Vec<ProtoInstruction>> {
     // build label
     let begin = labels.begin_loop();
     let block_label = labels.jump_to();
@@ -399,15 +399,15 @@ pub fn preprocess_while(mut sub_instructions: Vec<Vec<ProtoInstruction>>, labels
 
 /// Build the intructions needed to run a BinaryOp expression
 /// see:
-/// * `preprocess_numerical_op`
-/// * `preprocess_comparison_op`
-/// * `preprocess_logical_op`
+/// * `compile_numerical_op`
+/// * `compile_comparison_op`
+/// * `compile_logical_op`
 /// for details
-pub fn preprocess_binary_op(op: &BinaryOp, sub_instructions: Vec<Vec<ProtoInstruction>>, labels: &mut LabelGenerator) -> Option<Vec<ProtoInstruction>> {
+pub fn compile_binary_op(op: &BinaryOp, sub_instructions: Vec<Vec<ProtoInstruction>>, labels: &mut LabelGenerator) -> Option<Vec<ProtoInstruction>> {
     match op {
-        Numerical(num_op) => preprocess_numerical_op(num_op, sub_instructions),
-        Comparison(comp_op) => preprocess_comparison_op(comp_op, sub_instructions),
-        Logical(logical_op) => preprocess_logical_op(logical_op, sub_instructions, labels),
+        Numerical(num_op) => compile_numerical_op(num_op, sub_instructions),
+        Comparison(comp_op) => compile_comparison_op(comp_op, sub_instructions),
+        Logical(logical_op) => compile_logical_op(logical_op, sub_instructions, labels),
     }
 }
     
