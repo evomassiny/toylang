@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use crate::ast::Expr;
-use crate::compiler::preprocessors::{ProtoValue,ProtoInstruction,LabelGenerator,Addr,AddrKind};
-use crate::compiler::preprocessors as pp;
+use crate::compiler::proto_instructions::{ProtoValue,ProtoInstruction,LabelGenerator,Addr,AddrKind};
+use crate::compiler::expression_compilers as ec;
 use crate::compiler::instructions::Instruction;
 use crate::builtins::{Value,FnKind};
 
@@ -103,22 +103,22 @@ impl Compiler {
             // Build the intruction set needed to evaluate the current expression
             use Expr::*;
             let insts: Vec<ProtoInstruction> = match expression {
-                Const(c) => pp::preprocess_const(c)?,
-                Return(_) => pp::preprocess_return(sub_instructions)?,
-                If(..) => pp::preprocess_if(sub_instructions, &mut labels)?,
-                Block(..) => pp::preprocess_block(sub_instructions)?,
-                LetDecl(name, _) => pp::preprocess_let(name, sub_instructions)?,
-                Local(id) => pp::preprocess_local(id)?,
-                Assign(id, ..) => pp::assign_to_instructions(id, sub_instructions)?,
-                Call(..) => pp::preprocess_call(sub_instructions)?,
+                Const(c) => ec::preprocess_const(c)?,
+                Return(_) => ec::preprocess_return(sub_instructions)?,
+                If(..) => ec::preprocess_if(sub_instructions, &mut labels)?,
+                Block(..) => ec::preprocess_block(sub_instructions)?,
+                LetDecl(name, _) => ec::preprocess_let(name, sub_instructions)?,
+                Local(id) => ec::preprocess_local(id)?,
+                Assign(id, ..) => ec::assign_to_instructions(id, sub_instructions)?,
+                Call(..) => ec::preprocess_call(sub_instructions)?,
                 FunctionDecl(name, args, _block) => 
-                    pp::preprocess_function_decl(sub_instructions, name, args, &mut labels)?,
+                    ec::preprocess_function_decl(sub_instructions, name, args, &mut labels)?,
                 BinaryOp(op, ..) => 
-                    pp::preprocess_binary_op(op, sub_instructions, &mut labels)?,
-                UnaryOp(op, ..) => pp::preprocess_unary_op(op, sub_instructions)?,
-                WhileLoop(..) => pp::preprocess_while(sub_instructions, &mut labels)?,
-                Break => pp::preprocess_break()?,
-                Continue => pp::preprocess_continue()?,
+                    ec::preprocess_binary_op(op, sub_instructions, &mut labels)?,
+                UnaryOp(op, ..) => ec::preprocess_unary_op(op, sub_instructions)?,
+                WhileLoop(..) => ec::preprocess_while(sub_instructions, &mut labels)?,
+                Break => ec::preprocess_break()?,
+                Continue => ec::preprocess_continue()?,
             };
             // Push those expression to the 
             if insts.len() > 0 {
@@ -129,12 +129,9 @@ impl Compiler {
         Some(instructions.pop()?)
     }
 
-    /// Compile an AST into an instruction set
-    pub fn compile(ast: &Expr) -> Option<Vec<Instruction>> {
+    /// Solves labels in a proto instruction set into Instruction Addresses
+    fn solve_labels(mut proto_instructions: Vec<ProtoInstruction>) -> Option<Vec<Instruction>> {
         use Instruction::*;
-        // compile into proto instructions
-        let mut proto_instructions = Self::preprocess(ast)?;
-        
         // solve 'continue' as Goto labels
         // relies on the fact that a Beginloop label must be located *BEFORE* 
         // the *continue* expression
@@ -254,5 +251,14 @@ impl Compiler {
             }
         }
         Some(instructions)
+    }
+
+    /// Compile an AST into an instruction set
+    pub fn compile(ast: &Expr) -> Option<Vec<Instruction>> {
+        // compile into proto instructions
+        let proto_instructions = Self::preprocess(ast)?;
+        // solve labels into addresses
+        Self::solve_labels(proto_instructions)
+        
     }
 }
