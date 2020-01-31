@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use crate::ast::Expr;
-use crate::compiler::preprocessors::{PreValue,PreInstruction,LabelGenerator,Addr,AddrKind};
+use crate::compiler::preprocessors::{ProtoValue,ProtoInstruction,LabelGenerator,Addr,AddrKind};
 use crate::compiler::preprocessors as pp;
 use crate::compiler::instructions::Instruction;
 use crate::builtins::{Value,FnKind};
@@ -81,11 +81,11 @@ pub struct Compiler {}
 
 impl Compiler {
 
-    /// compile an AST into a vector of PreInstruction
+    /// compile an AST into a vector of ProtoInstruction
     /// an intermediate representation of the actual Instruction set
     /// with unsolved address (labels)
-    pub fn preprocess(expression: &Expr) -> Option<Vec<PreInstruction>> {
-        let mut instructions: Vec<Vec<PreInstruction>> = Vec::new();
+    pub fn preprocess(expression: &Expr) -> Option<Vec<ProtoInstruction>> {
+        let mut instructions: Vec<Vec<ProtoInstruction>> = Vec::new();
         // a struct used to build uniq labels
         let mut labels = LabelGenerator::new();
 
@@ -102,7 +102,7 @@ impl Compiler {
 
             // Build the intruction set needed to evaluate the current expression
             use Expr::*;
-            let insts: Vec<PreInstruction> = match expression {
+            let insts: Vec<ProtoInstruction> = match expression {
                 Const(c) => pp::preprocess_const(c)?,
                 Return(_) => pp::preprocess_return(sub_instructions)?,
                 If(..) => pp::preprocess_if(sub_instructions, &mut labels)?,
@@ -133,50 +133,50 @@ impl Compiler {
     pub fn compile(ast: &Expr) -> Option<Vec<Instruction>> {
         use Instruction::*;
         // compile into proto instructions
-        let mut pre_instructions = Self::preprocess(ast)?;
+        let mut proto_instructions = Self::preprocess(ast)?;
         
         // solve 'continue' as Goto labels
         // relies on the fact that a Beginloop label must be located *BEFORE* 
         // the *continue* expression
         let mut last_loop_start: usize = 0;
-        for pre_intruction in pre_instructions.iter_mut() {
-            match *pre_intruction {
-                PreInstruction::AddrLabel( Addr { addr, kind: AddrKind::BeginLoop }) => {
+        for proto_intruction in proto_instructions.iter_mut() {
+            match *proto_intruction {
+                ProtoInstruction::AddrLabel( Addr { addr, kind: AddrKind::BeginLoop }) => {
                     // store the instruction index 
                     last_loop_start = addr;
                     continue;
                 },
-                PreInstruction::Continue => {},
+                ProtoInstruction::Continue => {},
                 _ => continue,
             }
             // turn the continue into a GOTO
-            *pre_intruction = PreInstruction::Goto(last_loop_start);
+            *proto_intruction = ProtoInstruction::Goto(last_loop_start);
         }
         // solve break as Goto labels
         // must iters the label in reverse
         // relies on the fact that a Endloop label must be located *AFTER* 
         // the *break* expression
         let mut last_loop_end: usize = 0;
-        for pre_intruction in pre_instructions.iter_mut().rev() {
-            match *pre_intruction {
-                PreInstruction::AddrLabel( Addr { addr, kind: AddrKind::EndLoop }) => {
+        for proto_intruction in proto_instructions.iter_mut().rev() {
+            match *proto_intruction {
+                ProtoInstruction::AddrLabel( Addr { addr, kind: AddrKind::EndLoop }) => {
                     // store the instruction index 
                     last_loop_end = addr;
                     continue;
                 },
-                PreInstruction::Break => {},
+                ProtoInstruction::Break => {},
                 _ => continue,
             }
             // turn the continue into a GOTO
-            *pre_intruction = PreInstruction::Goto(last_loop_end);
+            *proto_intruction = ProtoInstruction::Goto(last_loop_end);
         }
 
         // solve labels as instruction offset
         let mut label_to_offset: HashMap<usize, usize> = HashMap::new();
         let mut label_count: usize = 0;
         // collect labels
-        for (i, pre_intruction) in pre_instructions.iter().enumerate() {
-            if let PreInstruction::AddrLabel( Addr { addr, .. }) = *pre_intruction {
+        for (i, proto_intruction) in proto_instructions.iter().enumerate() {
+            if let ProtoInstruction::AddrLabel( Addr { addr, .. }) = *proto_intruction {
                 // store the instruction index 
                 label_to_offset.insert(addr, i - label_count);
                 label_count += 1;
@@ -185,42 +185,42 @@ impl Compiler {
 
         // build the actual instructions
         let mut instructions: Vec<Instruction> = Vec::new();
-        let final_idx = pre_instructions.len() -1;
-        for (i, pre_instruction) in pre_instructions.into_iter().enumerate() {
-            match pre_instruction {
-                PreInstruction::Goto(label) => {
+        let final_idx = proto_instructions.len() -1;
+        for (i, proto_instruction) in proto_instructions.into_iter().enumerate() {
+            match proto_instruction {
+                ProtoInstruction::Goto(label) => {
                     let offset = label_to_offset.get(&label)?;
                     instructions.push(Goto(*offset));
                 },
-                PreInstruction::GotoIf(label) => {
+                ProtoInstruction::GotoIf(label) => {
                     let offset = label_to_offset.get(&label)?;
                     instructions.push(GotoIf(*offset));
                 },
-                PreInstruction::AddrLabel(..) => {},
-                PreInstruction::NewRef(s) => instructions.push(NewRef(s)),
-                PreInstruction::Load(s) => instructions.push(Load(s)),
-                PreInstruction::Store(s) => instructions.push(Store(s)),
-                PreInstruction::Val(pre_val) => {
+                ProtoInstruction::AddrLabel(..) => {},
+                ProtoInstruction::NewRef(s) => instructions.push(NewRef(s)),
+                ProtoInstruction::Load(s) => instructions.push(Load(s)),
+                ProtoInstruction::Store(s) => instructions.push(Store(s)),
+                ProtoInstruction::Val(proto_val) => {
                     use Value::*;
-                    let val = match pre_val {
-                        PreValue::Str(s) => Str(s),
-                        PreValue::Bool(b) => Bool(b),
-                        PreValue::Num(n) => Num(n),
-                        PreValue::Function(label) => {
+                    let val = match proto_val {
+                        ProtoValue::Str(s) => Str(s),
+                        ProtoValue::Bool(b) => Bool(b),
+                        ProtoValue::Num(n) => Num(n),
+                        ProtoValue::Function(label) => {
                             let offset = label_to_offset.get(&label)?;
                             Function(FnKind::Address(*offset))
                         },
-                        PreValue::Null => Null,
-                        PreValue::Undefined => Undefined,
+                        ProtoValue::Null => Null,
+                        ProtoValue::Undefined => Undefined,
                     };
                     instructions.push(Val(val));
                 }
-                PreInstruction::FnCall => instructions.push(FnCall),
-                PreInstruction::FnRet => instructions.push(FnRet),
-                PreInstruction::PushToNext(n) => instructions.push(PushToNext(n)),
-                PreInstruction::NewStack => instructions.push(NewStack),
-                PreInstruction::ClearStack => instructions.push(ClearStack),
-                PreInstruction::DelStack => {
+                ProtoInstruction::FnCall => instructions.push(FnCall),
+                ProtoInstruction::FnRet => instructions.push(FnRet),
+                ProtoInstruction::PushToNext(n) => instructions.push(PushToNext(n)),
+                ProtoInstruction::NewStack => instructions.push(NewStack),
+                ProtoInstruction::ClearStack => instructions.push(ClearStack),
+                ProtoInstruction::DelStack => {
                     if i != final_idx { 
                         // don't delete the root stack, we will use it to evaluate the
                         // return value of a whole script
@@ -228,29 +228,29 @@ impl Compiler {
                     }
                 },
                 // binary op
-                PreInstruction::Add => instructions.push(Add),
-                PreInstruction::Div => instructions.push(Div),
-                PreInstruction::Sub => instructions.push(Sub),
-                PreInstruction::Mul => instructions.push(Mul),
-                PreInstruction::Pow => instructions.push(Pow),
-                PreInstruction::Mod => instructions.push(Mod),
-                PreInstruction::Equal => instructions.push(Equal),
-                PreInstruction::NotEqual => instructions.push(NotEqual),
-                PreInstruction::GreaterThan => instructions.push(GreaterThan),
-                PreInstruction::GreaterThanOrEqual => instructions.push(GreaterThanOrEqual),
-                PreInstruction::LessThan => instructions.push(LessThan),
-                PreInstruction::LessThanOrEqual => instructions.push(LessThanOrEqual),
-                PreInstruction::And => instructions.push(And),
-                PreInstruction::Or => instructions.push(Or),
+                ProtoInstruction::Add => instructions.push(Add),
+                ProtoInstruction::Div => instructions.push(Div),
+                ProtoInstruction::Sub => instructions.push(Sub),
+                ProtoInstruction::Mul => instructions.push(Mul),
+                ProtoInstruction::Pow => instructions.push(Pow),
+                ProtoInstruction::Mod => instructions.push(Mod),
+                ProtoInstruction::Equal => instructions.push(Equal),
+                ProtoInstruction::NotEqual => instructions.push(NotEqual),
+                ProtoInstruction::GreaterThan => instructions.push(GreaterThan),
+                ProtoInstruction::GreaterThanOrEqual => instructions.push(GreaterThanOrEqual),
+                ProtoInstruction::LessThan => instructions.push(LessThan),
+                ProtoInstruction::LessThanOrEqual => instructions.push(LessThanOrEqual),
+                ProtoInstruction::And => instructions.push(And),
+                ProtoInstruction::Or => instructions.push(Or),
                 // unary op
-                PreInstruction::Minus => instructions.push(Minus),
-                PreInstruction::Plus => instructions.push(Plus),
-                PreInstruction::Not => instructions.push(Not),
-                PreInstruction::NewLoopCtx => instructions.push(NewLoopCtx),
-                PreInstruction::DelLoopCtx => instructions.push(DelLoopCtx),
-                PreInstruction::PopToLoopCtx => instructions.push(PopToLoopCtx),
+                ProtoInstruction::Minus => instructions.push(Minus),
+                ProtoInstruction::Plus => instructions.push(Plus),
+                ProtoInstruction::Not => instructions.push(Not),
+                ProtoInstruction::NewLoopCtx => instructions.push(NewLoopCtx),
+                ProtoInstruction::DelLoopCtx => instructions.push(DelLoopCtx),
+                ProtoInstruction::PopToLoopCtx => instructions.push(PopToLoopCtx),
                 // both must have been replaced by Goto
-                PreInstruction::Break | PreInstruction::Continue => {},
+                ProtoInstruction::Break | ProtoInstruction::Continue => {},
             }
         }
         Some(instructions)
