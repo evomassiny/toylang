@@ -744,7 +744,7 @@ mod tests {
         );
     }
     #[test]
-    fn test_variable_scope() {
+    fn test_closure() {
         let src = r#"
         function level_0() {
              let a = 1;

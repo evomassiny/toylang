@@ -80,6 +80,7 @@ impl <'iter> Iterator for AstTraverser <'iter> {
 pub struct Compiler {}
 
 impl Compiler {
+
     /// compile an AST into a vector of PreInstruction
     /// an intermediate representation of the actual Instruction set
     /// with unsolved address (labels)
