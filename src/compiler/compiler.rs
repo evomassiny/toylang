@@ -6,12 +6,12 @@ use crate::compiler::instructions::Instruction;
 use crate::builtins::{Value,FnKind};
 
 /// the name of the global execution context
-const GLOBAL_SCOPE_LABEL: &'static str = "global";
+pub const GLOBAL_SCOPE_LABEL: &'static str = "global";
 
 /// The string used to separate the labels
 /// for instance a function "foo" defined in the global scope
 /// will have a execution context named "Global__foo"
-const SCOPE_LABEL_SEPARATOR: &'static str = "__";
+pub const SCOPE_LABEL_SEPARATOR: &'static str = "__";
 
 /// A Node in the AST
 pub struct AstNode <'n> {
@@ -59,6 +59,16 @@ impl <'n> AstNode <'n> {
             .collect::<Vec<String>>()
             .join(SCOPE_LABEL_SEPARATOR)
     }
+
+    /// returns either or not this AST node 
+    /// leads to a new lexical scope (eg: execution context)
+    pub fn is_new_lexical_scope(&self) -> bool {
+        match self.scope_label_chain.last() {
+            Some(None) => false,
+            Some(Some(_)) => true,
+            None => false,
+        }
+    }
 }
 
 /// An Iterator over an Abstract Syntaxe Tree
@@ -73,7 +83,7 @@ pub struct AstTraverser <'iter>{
     // for each level 
     crawling_idx: Vec<usize>,
     // the label chain of the ast node's scope
-    scopes_label_chain: Vec<Option<String>>
+    scope_label_chain: Vec<Option<String>>
 }
 impl <'iter> AstTraverser <'iter> {
 
@@ -82,7 +92,7 @@ impl <'iter> AstTraverser <'iter> {
         Self {
             nodes: vec![expression],
             crawling_idx: vec![0],
-            scopes_label_chain: vec![],
+            scope_label_chain: vec![],
         }
     }
 }
@@ -98,17 +108,19 @@ impl <'iter> Iterator for AstTraverser <'iter> {
             let idx = self.nodes.len() -1;
 
             // set node scope label
-            let scope_label: Option<String> = match (idx, self.nodes[idx]) {
-                // the root node defines the global scope
-                (0, _) => Some(GLOBAL_SCOPE_LABEL.into()),
-                // functions define a label composed of their name and their AST node index
-                (i, Expr::FunctionDecl(ref name, ..)) => {
-                    Some(format!("{}_{}", &name, &i))
-                },
-                // any other expression does not defines a scope
-                (_, _) => None,
-            };
-            self.scopes_label_chain.push(scope_label);
+            if idx == self.scope_label_chain.len() {
+                let scope_label: Option<String> = match (idx, self.nodes[idx]) {
+                    // the root node defines the global scope
+                    (0, _) => Some(GLOBAL_SCOPE_LABEL.into()),
+                    // functions define a label composed of their name and their AST node index
+                    (i, Expr::FunctionDecl(ref name, ..)) => {
+                        Some(format!("{}_{}", &name, &i))
+                    },
+                    // any other expression does not defines a scope
+                    (_, _) => None,
+                };
+                self.scope_label_chain.push(scope_label);
+            }
 
             // Crawl sub nodes first
             let sub_count = self.nodes[idx].count_sub_expressions();
@@ -125,13 +137,15 @@ impl <'iter> Iterator for AstTraverser <'iter> {
 
             // yield the current node, 
             // at this point each of its sub-nodes has been yielded
+            let scope_chain = self.scope_label_chain.clone();
+            self.scope_label_chain.pop();
             let crawled_node = self.nodes.pop()?;
             let _ = self.crawling_idx.pop();
 
             return Some(AstNode {
                 expression: crawled_node,
                 dependancies: sub_count,
-                scope_label_chain: self.scopes_label_chain.clone(),
+                scope_label_chain: scope_chain,
             });
             
         }
@@ -148,7 +162,10 @@ impl Compiler {
     /// an intermediate representation of the actual Instruction set
     /// with unsolved address (labels)
     pub fn preprocess(expression: &Expr) -> Option<Vec<ProtoInstruction>> {
-        let mut instructions: Vec<Vec<ProtoInstruction>> = Vec::new();
+        // the proto-instruction list.
+        // the script starts by creating the global context
+        let mut instructions: Vec<Vec<ProtoInstruction>> = vec![];
+        
         // a struct used to build uniq labels
         let mut labels = LabelGenerator::new();
 
@@ -171,12 +188,18 @@ impl Compiler {
                 Return(_) => ec::compile_return(sub_instructions)?,
                 If(..) => ec::compile_if(sub_instructions, &mut labels)?,
                 Block(..) => ec::compile_block(sub_instructions)?,
-                LetDecl(name, _) => ec::compile_let(name, sub_instructions)?,
-                Local(id) => ec::compile_local(id)?,
-                Assign(id, ..) => ec::compile_assign(id, sub_instructions)?,
+                LetDecl(name, _) => ec::compile_let(name, sub_instructions, ast_node.scope_label())?,
+                Local(id) => ec::compile_local(id, ast_node.scope_label())?,
+                Assign(id, ..) => ec::compile_assign(id, sub_instructions, ast_node.scope_label())?,
                 Call(..) => ec::compile_call(sub_instructions)?,
                 FunctionDecl(name, args, _block) => 
-                    ec::compile_function_decl(sub_instructions, name, args, &mut labels)?,
+                    ec::compile_function_decl(
+                        sub_instructions, 
+                        name, args,
+                        &mut labels, 
+                        ast_node.scope_label(),
+                        ast_node.parent_scope_label(),
+                    )?,
                 BinaryOp(op, ..) => 
                     ec::compile_binary_op(op, sub_instructions, &mut labels)?,
                 UnaryOp(op, ..) => ec::compile_unary_op(op, sub_instructions)?,
@@ -190,7 +213,11 @@ impl Compiler {
             }
 
         }
-        Some(instructions.pop()?)
+        let mut final_instructions = vec![
+            ProtoInstruction::NewContext(GLOBAL_SCOPE_LABEL.to_string(), None)
+        ];
+        final_instructions.extend(instructions.pop()?);
+        Some(final_instructions)
     }
 
     /// Solves labels in a proto instruction set into Instruction Addresses
@@ -258,9 +285,10 @@ impl Compiler {
                     instructions.push(GotoIf(*offset));
                 },
                 ProtoInstruction::AddrLabel(..) => {},
-                ProtoInstruction::NewRef(s) => instructions.push(NewRef(s)),
-                ProtoInstruction::Load(s) => instructions.push(Load(s)),
-                ProtoInstruction::Store(s) => instructions.push(Store(s)),
+                ProtoInstruction::NewContext(ctx, parent_ctx) => instructions.push(NewContext(ctx, parent_ctx)),
+                ProtoInstruction::NewRef(s, ctx) => instructions.push(NewRef(s, ctx)),
+                ProtoInstruction::Load(s, ctx) => instructions.push(Load(s, ctx)),
+                ProtoInstruction::Store(s, ctx) => instructions.push(Store(s, ctx)),
                 ProtoInstruction::Val(proto_val) => {
                     use Value::*;
                     let val = match proto_val {

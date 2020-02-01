@@ -8,6 +8,8 @@ use crate::ast::{
 /// Label are references to code location,
 /// those are later solved into addresses 
 pub type Label = usize;
+/// defines a lexical scope
+pub type ContextLabel = String;
 
 #[derive(Debug,Clone,PartialEq)]
 pub enum ProtoValue {
@@ -124,14 +126,18 @@ pub enum ProtoInstruction {
     Break,
     Continue,
     // Variable bindings
-    NewRef(String), 
-    Load(String),
+    /// Create a new variable binding into a given Context
+    NewRef(String, ContextLabel), 
+    /// Loads a Value, indentified by its name and Context label
+    Load(String, ContextLabel),
     /// pop the stack and store the value into the variable pointed by `String`
     /// if the stack is empty, store `Value::Undefined`
-    Store(String), 
-    // value 
+    Store(String, ContextLabel), 
+    /// Creates a new context, the first label is the new context, 
+    /// the second one is its parent (wrapped in an option, to handle the root context)
+    NewContext(ContextLabel, Option<ContextLabel>), 
+    /// Create a value and push it onto the stack
     Val(ProtoValue),
-    // Arguments and return value
     /// Call a function
     FnCall, // doesn't need to push a new stack, but must create a new environnement
     /// Exit a function

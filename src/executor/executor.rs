@@ -1,4 +1,8 @@
-use crate::compiler::Instruction;
+use crate::compiler::{
+    Instruction,
+    ContextLabel,
+    GLOBAL_SCOPE_LABEL,
+};
 use crate::builtins::{FnKind,Value};
 use crate::executor::contexts::{
     Context,
@@ -56,8 +60,8 @@ impl <'inst> Executor <'inst> {
     }
 
     /// load the value referenced by `name`
-    fn load(&self, name: &str) -> Value {
-        match self.context.load(name) {
+    fn load(&self, name: &str, ctx: &ContextLabel) -> Value {
+        match self.context.load(name, ctx) {
             Ok(v) => v,
             Err(_) => Value::Undefined,
 
@@ -66,13 +70,16 @@ impl <'inst> Executor <'inst> {
     
     /// store a value at the referenced place
     /// If the reference doesn't points to anything, returns an error
-    fn store(&mut self, name: &str, val: Value) -> Result<(), ExecutionError> {
-        self.context.store(name, val).map_err(Into::into)
+    fn store(&mut self, name: &str, ctx: &ContextLabel, val: Value) -> Result<(), ExecutionError> {
+        self.context.store(name, ctx, val).map_err(Into::into)
     }
     
+    pub fn new_context(&mut self, ctx: &ContextLabel, parent_ctx: &Option<ContextLabel>) {
+        self.context.new_context(ctx, parent_ctx);
+    }
     /// create a reference
-    fn create_ref(&mut self, name: &str) -> Result<(), ExecutionError> {
-        self.context.create_ref(name).map_err(Into::into)
+    fn create_ref(&mut self, name: &str, ctx: &ContextLabel) -> Result<(), ExecutionError> {
+        self.context.create_ref(name, ctx).map_err(Into::into)
     }
 
     /// stores a value into the stack
@@ -139,14 +146,22 @@ impl <'inst> Executor <'inst> {
                 } 
             },
             // Refs to Values
-            NewRef(ref name) => self.create_ref(name)?,
-            Load(ref name) => {
-                let value = self.load(name);
+            NewContext(ref ctx, ref parent_ctx) => {
+                self.new_context(ctx, parent_ctx);
+                self.context.add_block_scope();
+                // pass in arguments
+                while let Some(value) = self.passthrough.pop() {
+                    self.push_value(value);
+                }
+            },
+            NewRef(ref name, ref ctx) => self.create_ref(name, ctx)?,
+            Load(ref name, ref ctx) => {
+                let value = self.load(name, ctx);
                 self.push_value(value);
             },
-            Store(ref name) => {
+            Store(ref name, ref ctx) => {
                 let value = self.pop_value()?;
-                self.store(name, value)?;
+                self.store(name, ctx, value)?;
             },
             Val(ref value) => self.push_value(value.clone()),
             // Functions Context management
@@ -156,12 +171,10 @@ impl <'inst> Executor <'inst> {
                     Value::Function(FnKind::Address(addr)) => {
                         // go to the function body
                         self.execution_pointers.push(addr);
-                        // Add a new scope
-                        self.context.add_function_scope();
-                        // pass in arguments
-                        while let Some(value) = self.passthrough.pop() {
-                            self.push_value(value);
-                        }
+                        //// pass in arguments
+                        //while let Some(value) = self.passthrough.pop() {
+                            //self.push_value(value);
+                        //}
                         return Ok(ExecStatus::Running);
                     },
                     Value::Function(FnKind::Native(func)) => {
@@ -176,7 +189,6 @@ impl <'inst> Executor <'inst> {
                 }
             },
             FnRet => {
-                self.context.pop_function_scope();
                 // pass result values
                 while let Some(value) = self.passthrough.pop() {
                     self.push_value(value);
@@ -326,12 +338,10 @@ impl <'inst> Executor <'inst> {
             self.execute()?;
         }
         // perform the call
-        match self.load(name) {
+        match self.load(name, &GLOBAL_SCOPE_LABEL.into()) {
             Value::Function(FnKind::Address(addr)) => {
                 // go to the function body
                 self.execution_pointers.push(addr);
-                // Add a new scope
-                self.context.add_function_scope();
                 // pass in arguments
                 for arg in args {
                     self.push_value(arg);
@@ -350,8 +360,11 @@ impl <'inst> Executor <'inst> {
 #[cfg(test)]
 mod tests {
     use crate::ast::Ast;
-    use crate::compiler::Compiler;
     use crate::executor::{Executor,ExecutionError};
+    use crate::compiler::{
+        Compiler,
+        GLOBAL_SCOPE_LABEL,
+    };
     use crate::builtins::Value;
     use Value::*;
 
@@ -698,7 +711,7 @@ mod tests {
         let instructions = Compiler::compile(&ast.root).expect("compiler error");
         let mut executor = Executor::from_instructions(&instructions);
         // add the function
-        let _ = executor.context.add_native_function("give_true", give_true);
+        let _ = executor.context.add_native_function("give_true", &GLOBAL_SCOPE_LABEL.to_string(), give_true);
 
         assert_eq!(
             executor.execute().unwrap(),
@@ -717,7 +730,7 @@ mod tests {
         let instructions = Compiler::compile(&ast.root).expect("compiler error");
         let mut executor = Executor::from_instructions(&instructions);
         // add the function
-        let _ = executor.context.add_native_function("add_two", add_two);
+        let _ = executor.context.add_native_function("add_two", &GLOBAL_SCOPE_LABEL.to_string(), add_two);
 
         assert_eq!(
             executor.execute().unwrap(),
