@@ -764,28 +764,19 @@ mod tests {
              function level_1() {
                  a = a + 1; 
                  return a;
-             };
+             }
              return level_1;
         }
         let f = level_0();
+        f();
+        f()
         "#;
         let ast = Ast::from_str(&src).expect("Could not build ast");
         let instructions = Compiler::compile(&ast.root).expect("compiler error");
         let mut executor = Executor::from_instructions(&instructions);
 
         assert_eq!(
-            executor.call_function(
-                "f",
-                vec![],
-            ).unwrap(),
-            Some(Num(2.))
-        );
-
-        assert_eq!(
-            executor.call_function(
-                "f",
-                vec![],
-            ).unwrap(),
+            executor.execute().unwrap(),
             Some(Num(3.))
         );
     }

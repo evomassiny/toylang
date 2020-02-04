@@ -21,6 +21,8 @@ pub struct AstNode <'n> {
     pub dependancies: usize,
     /// the label of the scope chain representing the lexical scope of the node
     scope_label_chain: Vec<Option<String>>,
+    /// number of branching since the root of the ast
+    depth_level: usize,
 }
 impl <'n> AstNode <'n> {
 
@@ -41,8 +43,8 @@ impl <'n> AstNode <'n> {
 
     /// returns the label of the lexical scope 
     /// (eg the execution context)
-    /// of this AstNode
-    fn parent_scope_label(&self) -> String {
+    /// of this AstNode, 
+    fn parent_scope_label(&self) -> Option<String> {
         // filter out the `None` instance, which represents
         // AST nodes that don't defines a new scope
         let mut labels = self.scope_label_chain
@@ -53,11 +55,17 @@ impl <'n> AstNode <'n> {
         // remove the last one, to get the parent
         // scope
         let _ = labels.pop();
+        // return None if there is no parent Global context
+        if labels.len() == 0 {
+            return None;
+        }
         // join them into one big label
-        labels.into_iter()
+        let label = labels.into_iter()
             .map(ToString::to_string)
             .collect::<Vec<String>>()
-            .join(SCOPE_LABEL_SEPARATOR)
+            .join(SCOPE_LABEL_SEPARATOR);
+
+        Some(label)
     }
 
     /// returns either or not this AST node 
@@ -92,7 +100,7 @@ impl <'iter> AstTraverser <'iter> {
         Self {
             nodes: vec![expression],
             crawling_idx: vec![0],
-            scope_label_chain: vec![],
+            scope_label_chain: vec![Some(GLOBAL_SCOPE_LABEL.into())],
         }
     }
 }
@@ -107,36 +115,32 @@ impl <'iter> Iterator for AstTraverser <'iter> {
         while self.nodes.len() > 0 {
             let idx = self.nodes.len() -1;
 
-            // set node scope label
-            if idx == self.scope_label_chain.len() {
-                let scope_label: Option<String> = match (idx, self.nodes[idx]) {
-                    // the root node defines the global scope
-                    (0, _) => Some(GLOBAL_SCOPE_LABEL.into()),
-                    // functions define a label composed of their name and their AST node index
-                    (i, Expr::FunctionDecl(ref name, ..)) => {
-                        Some(format!("{}_{}", &name, &i))
-                    },
-                    // any other expression does not defines a scope
-                    (_, _) => None,
-                };
-                self.scope_label_chain.push(scope_label);
-            }
-
             // Crawl sub nodes first
             let sub_count = self.nodes[idx].count_sub_expressions();
             if self.crawling_idx[idx] < sub_count {
-                self.crawling_idx.push(0);
                 // assert that we tarverse the tree from right to left
                 let next_idx = sub_count - self.crawling_idx[idx] - 1;
                 if let Some(sub_node) = self.nodes[idx].get_sub_expression(next_idx) {
+
+                    // set node scope label
+                    let scope_label: Option<String> = match sub_node {
+                        // functions define a label composed of their name and their AST node index
+                        &Expr::FunctionDecl(ref name, ..) => {
+                            Some(format!("{}_{}", &name, &next_idx))
+                        },
+                        // any other expression does not defines a scope
+                        _ => None,
+                    };
+                    self.scope_label_chain.push(scope_label);
                     self.nodes.push(&sub_node);
+                    self.crawling_idx.push(0);
                 }
                 self.crawling_idx[idx] += 1;
                 continue;
             }
 
             // yield the current node, 
-            // at this point each of its sub-nodes has been yielded
+            // at this point each of its sub-nodes has been appended onto self.nodes
             let scope_chain = self.scope_label_chain.clone();
             self.scope_label_chain.pop();
             let crawled_node = self.nodes.pop()?;
@@ -146,6 +150,7 @@ impl <'iter> Iterator for AstTraverser <'iter> {
                 expression: crawled_node,
                 dependancies: sub_count,
                 scope_label_chain: scope_chain,
+                depth_level: idx,
             });
             
         }
@@ -180,26 +185,41 @@ impl Compiler {
             for _ in 0..ast_node.dependancies {
                 sub_instructions.push(instructions.pop()?);
             }
-
+            
             // Build the intruction set needed to evaluate the current expression
             use Expr::*;
             let insts: Vec<ProtoInstruction> = match ast_node.expression {
                 Const(c) => ec::compile_const(c)?,
                 Return(_) => ec::compile_return(sub_instructions)?,
                 If(..) => ec::compile_if(sub_instructions, &mut labels)?,
-                Block(..) => ec::compile_block(sub_instructions)?,
+                Block(..) => {
+                    // For the the root expression 
+                    // just declare the global context
+                    if ast_node.depth_level == 0 {
+                        let mut root_expressions = vec![
+                            ProtoInstruction::NewContext(GLOBAL_SCOPE_LABEL.to_string(), None)
+                        ];
+                        for sub_insts in sub_instructions {
+                            root_expressions.extend(sub_insts);
+                        }
+                        root_expressions
+                    } else {
+                        ec::compile_block(sub_instructions)?
+                    }
+                },
                 LetDecl(name, _) => ec::compile_let(name, sub_instructions, ast_node.scope_label())?,
                 Local(id) => ec::compile_local(id, ast_node.scope_label())?,
                 Assign(id, ..) => ec::compile_assign(id, sub_instructions, ast_node.scope_label())?,
                 Call(..) => ec::compile_call(sub_instructions)?,
-                FunctionDecl(name, args, _block) => 
+                FunctionDecl(name, args, _block) => {
                     ec::compile_function_decl(
                         sub_instructions, 
                         name, args,
                         &mut labels, 
                         ast_node.scope_label(),
                         ast_node.parent_scope_label(),
-                    )?,
+                    )?
+                },
                 BinaryOp(op, ..) => 
                     ec::compile_binary_op(op, sub_instructions, &mut labels)?,
                 UnaryOp(op, ..) => ec::compile_unary_op(op, sub_instructions)?,
@@ -213,11 +233,7 @@ impl Compiler {
             }
 
         }
-        let mut final_instructions = vec![
-            ProtoInstruction::NewContext(GLOBAL_SCOPE_LABEL.to_string(), None)
-        ];
-        final_instructions.extend(instructions.pop()?);
-        Some(final_instructions)
+        Some(instructions.pop()?)
     }
 
     /// Solves labels in a proto instruction set into Instruction Addresses

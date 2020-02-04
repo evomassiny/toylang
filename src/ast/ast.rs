@@ -261,13 +261,8 @@ impl Ast {
             }
         }
         // collect all expression trees into one root
-        let root: Expr;
-        if exp_stack.len() > 1 {
-            exp_stack.reverse();
-            root = Block(exp_stack);
-        } else {
-            root = exp_stack.pop()?;
-        }
+        exp_stack.reverse();
+        let root: Expr = Block(exp_stack);
         Some(Self { root })
     }
 

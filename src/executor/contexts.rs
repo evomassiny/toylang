@@ -64,7 +64,7 @@ pub struct Context {
 
 impl Context {
     pub fn new() -> Self {
-        let mut ctx = Self { 
+        let ctx = Self { 
             local_scopes: vec![], 
             contexts: HashMap::new(),
         };
@@ -164,14 +164,29 @@ impl Context {
     }
 
     pub fn store(&mut self, name: &str, ctx: &ContextLabel, val: Value) -> Result<(), ContextError> {
-        if let Some(stored) = self.contexts.get_mut(ctx)
-                .ok_or(context_error!("scopes stack is empty"))?
-                .bindings
-                .get_mut(name) {
-            *stored = val;
-            return Ok(());
+        let mut ctx = ctx.clone();
+        // crawl back the nested execution contexts until we found the
+        // reference to mutate
+        loop {
+            match self.contexts.get_mut(&ctx) {
+                Some(context) => {
+                    if let Some(stored) = context.bindings.get_mut(name) {
+                        *stored = val;
+                        return Ok(());
+                    }
+                    // otherwise lookup in an 'higher' scope
+                    match &context.parent {
+                        Some(label) => ctx = label.clone(),
+                        None => return Err(
+                            context_error!(format!("assignment error: Unknown reference {} (in {})", name, ctx))
+                        ),
+                    } 
+                },
+                None => return Err(
+                    context_error!(format!("assignment error: Unknown reference {} (in {})", name, ctx))
+                ),
+            }
         }
-        Err(context_error!(format!("Unknown reference {}", name)))
     }
 
     pub fn load(&self, name: &str, ctx: &ContextLabel) -> Result<Value, ContextError> {
@@ -185,6 +200,6 @@ impl Context {
                 None => break,
             } 
         }
-        Err(context_error!(format!("Unknown reference {}", name)))
+        Err(context_error!(format!("load error: Unknown reference {} (in {})", name, ctx)))
     }
 }

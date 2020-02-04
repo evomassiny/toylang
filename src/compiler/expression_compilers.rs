@@ -188,15 +188,13 @@ pub fn compile_call(mut sub_instructions: Vec<Vec<ProtoInstruction>>) -> Option<
 ///     NewRef 'id'
 ///     Store 'id'
 ///     
-/// Note: this function will remove the `NewStack` and `DelStack` of the function block
-/// TODO: replace `name` by an expression
 pub fn compile_function_decl(
     mut sub_instructions: Vec<Vec<ProtoInstruction>>,
     name: &str,
     args: &Vec<String>,
     labels: &mut LabelGenerator,
     ctx: ContextLabel,
-    parent_ctx: ContextLabel,
+    parent_ctx: Option<ContextLabel>,
     ) -> Option<Vec<ProtoInstruction>> {
     let mut instructions = Vec::new();
     // set the address of the function start and end
@@ -207,7 +205,7 @@ pub fn compile_function_decl(
     // set the `start` label here
     instructions.push(AddrLabel(start)); 
     // Build a new Context
-    instructions.push(NewContext(ctx.clone(), Some(parent_ctx))); 
+    instructions.push(NewContext(ctx.clone(), parent_ctx.clone())); 
     
     // load args
     for arg in args {
@@ -239,8 +237,8 @@ pub fn compile_function_decl(
 
     // set the variable that will hold the function address
     instructions.push(Val(ProtoValue::Function(start.addr)));
-    instructions.push(NewRef(name.into(), ctx.clone()));
-    instructions.push(Store(name.into(), ctx.clone()));
+    instructions.push(NewRef(name.into(), parent_ctx.clone()?));
+    instructions.push(Store(name.into(), parent_ctx.clone()?));
 
     Some(instructions)
 }
@@ -568,11 +566,11 @@ mod test {
                 NewContext(GLOBAL_SCOPE_LABEL.into(), None),
                 Goto(1),  // skip function block if we're not calling it
                 AddrLabel(Addr { addr: 0, kind: AddrKind::BeginFunction } ), // begin address
-                NewContext("global__foo_1".into(), Some(GLOBAL_SCOPE_LABEL.to_string())),
-                NewRef("a".into(), "global__foo_1".into()), // first arg 
-                Store("a".into(), "global__foo_1".into()),
-                NewRef("b".into(), "global__foo_1".into()), // 2nd arg
-                Store("b".into(), "global__foo_1".into()),
+                NewContext("global__foo_0".into(), Some(GLOBAL_SCOPE_LABEL.to_string())),
+                NewRef("a".into(), "global__foo_0".into()), // first arg 
+                Store("a".into(), "global__foo_0".into()),
+                NewRef("b".into(), "global__foo_0".into()), // 2nd arg
+                Store("b".into(), "global__foo_0".into()),
                 Val(Bool(true)), // function block
                 PushToNext(1),   
                 FnRet,
@@ -590,11 +588,11 @@ mod test {
                 NewContext(GLOBAL_SCOPE_LABEL.into(), None),
                 Goto(1),  // skip function block if we're not calling it
                 AddrLabel(Addr { addr: 0, kind: AddrKind::BeginFunction } ), // begin address
-                NewContext("global__foo_1".into(), Some(GLOBAL_SCOPE_LABEL.to_string())),
-                NewRef("a".into(), "global__foo_1".into()), // first arg 
-                Store("a".into(), "global__foo_1".into()),
-                NewRef("b".into(), "global__foo_1".into()), // 2nd arg
-                Store("b".into(), "global__foo_1".into()),
+                NewContext("global__foo_0".into(), Some(GLOBAL_SCOPE_LABEL.to_string())),
+                NewRef("a".into(), "global__foo_0".into()), // first arg 
+                Store("a".into(), "global__foo_0".into()),
+                NewRef("b".into(), "global__foo_0".into()), // 2nd arg
+                Store("b".into(), "global__foo_0".into()),
                 Val(Undefined),  // backup return call
                 PushToNext(1),
                 FnRet,
