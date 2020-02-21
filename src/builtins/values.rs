@@ -13,6 +13,12 @@ use std::{
 /// The signature of a Native Function
 pub type NativeFn = fn(&mut Vec<Value>) -> Value;
 
+/// The ID of a given context
+pub type ContextID = usize;
+
+/// The ID of a given lexical context
+pub type LexicalLabel = String;
+
 /// Describes the 2 kinds of Functions:
 /// * Address => a location in the byte code
 /// * Native => a rust function
@@ -48,7 +54,7 @@ pub enum Value {
     /// boolean `true` or `false`
     Bool(bool),
     /// A function
-    Function(FnKind),
+    Function(FnKind, ContextID),
     /// 
     Null,
     /// 
@@ -86,7 +92,7 @@ impl Value {
             // both are bool
             (Bool(s), Bool(o)) => *s == *o,
             // both are function
-            (Function(fn_s), Function(fn_o)) => fn_s == fn_o,
+            (Function(fn_s, ..), Function(fn_o, ..)) => fn_s == fn_o,
             _ => false
         };
         Bool(equality)
@@ -99,7 +105,7 @@ impl Into<bool> for &Value {
             Str(ref s) => !s.is_empty(),
             Num(n) => n > 0.,
             Bool(b) => b,
-            Function(_) => true,
+            Function(..) => true,
             Null | Undefined => false,
         }
     }
@@ -111,7 +117,7 @@ impl Into<f64> for &Value {
             Num(num) => num,
             Bool(boolean) => if boolean { 1. } else { 0. },
             Null => 0.,
-            Function(_) => NAN,
+            Function(..) => NAN,
             Undefined => NAN,
             Str(ref s) => {
                 //try to parse into f64
@@ -130,7 +136,7 @@ impl Into<i32> for &Value {
             Num(num) => num as i32,
             Bool(boolean) => if boolean { 1 } else { 0 },
             Null => 0,
-            Function(_) => 0,
+            Function(..) => 0,
             Undefined => 0,
             Str(ref s) => {
                 //try to parse into i32
@@ -150,8 +156,8 @@ impl std::fmt::Display for Value {
             Bool(boolean) => write!(f, "{}", boolean),
             Null => write!(f, "null"),
             // WARNING ! the actual js function script should be here
-            Function(FnKind::Address(addr)) => write!(f, "function at {}", addr),
-            Function(FnKind::Native(_)) => write!(f, "native function"),
+            Function(FnKind::Address(addr), _) => write!(f, "function at {}", addr),
+            Function(FnKind::Native(_), _) => write!(f, "native function"),
             Undefined => write!(f, "undefined"),
             Str(ref s) => write!(f, "{}", s),
         }

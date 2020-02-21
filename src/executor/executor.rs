@@ -1,9 +1,8 @@
 use crate::compiler::{
     Instruction,
-    ContextLabel,
     GLOBAL_SCOPE_LABEL,
 };
-use crate::builtins::{FnKind,Value};
+use crate::builtins::{FnKind,Value,LexicalLabel,ContextID};
 use crate::executor::contexts::{
     Context,
     ContextError,
@@ -60,8 +59,8 @@ impl <'inst> Executor <'inst> {
     }
 
     /// load the value referenced by `name`
-    fn load(&self, name: &str, ctx: &ContextLabel) -> Value {
-        match self.context.load(name, ctx) {
+    fn load(&self, name: &str) -> Value {
+        match self.context.load(name) {
             Ok(v) => v,
             Err(_) => Value::Undefined,
 
@@ -70,16 +69,16 @@ impl <'inst> Executor <'inst> {
     
     /// store a value at the referenced place
     /// If the reference doesn't points to anything, returns an error
-    fn store(&mut self, name: &str, ctx: &ContextLabel, val: Value) -> Result<(), ExecutionError> {
-        self.context.store(name, ctx, val).map_err(Into::into)
+    fn store(&mut self, name: &str, val: Value) -> Result<(), ExecutionError> {
+        self.context.store(name, val).map_err(Into::into)
     }
     
-    pub fn new_context(&mut self, ctx: &ContextLabel, parent_ctx: &Option<ContextLabel>) {
-        self.context.new_context(ctx, parent_ctx);
+    pub fn new_context(&mut self, label: &LexicalLabel) {
+        self.context.new_context(label);
     }
     /// create a reference
-    fn create_ref(&mut self, name: &str, ctx: &ContextLabel) -> Result<(), ExecutionError> {
-        self.context.create_ref(name, ctx).map_err(Into::into)
+    fn create_ref(&mut self, name: &str) -> Result<(), ExecutionError> {
+        self.context.create_ref(name).map_err(Into::into)
     }
 
     /// stores a value into the stack
@@ -146,39 +145,45 @@ impl <'inst> Executor <'inst> {
                 } 
             },
             // Refs to Values
-            NewContext(ref ctx, ref parent_ctx) => {
-                self.new_context(ctx, parent_ctx);
+            NewContext(ref ctx) => {
+                self.new_context(ctx);
                 self.context.add_block_scope();
                 // pass in arguments
                 while let Some(value) = self.passthrough.pop() {
                     self.push_value(value);
                 }
             },
-            NewRef(ref name, ref ctx) => self.create_ref(name, ctx)?,
-            Load(ref name, ref ctx) => {
-                let value = self.load(name, ctx);
+            NewFunction(ref fn_kind) => {
+                // load the current idx
+                let ctx_id = self.context.current_context()?;
+                // create a function from it and push it to the stack
+                self.push_value(Value::Function(fn_kind.clone(), ctx_id));
+            },
+            NewRef(ref name) => self.create_ref(name)?,
+            Load(ref name) => {
+                let value = self.load(name);
                 self.push_value(value);
             },
-            Store(ref name, ref ctx) => {
+            Store(ref name) => {
                 let value = self.pop_value()?;
-                self.store(name, ctx, value)?;
+                self.store(name, value)?;
             },
             Val(ref value) => self.push_value(value.clone()),
             // Functions Context management
             FnCall => {
                 let value = self.pop_value()?; 
                 match value {
-                    Value::Function(FnKind::Address(addr)) => {
+                    Value::Function(FnKind::Address(addr), ctx_id) => {
                         // go to the function body
                         self.execution_pointers.push(addr);
-                        //// pass in arguments
-                        //while let Some(value) = self.passthrough.pop() {
-                            //self.push_value(value);
-                        //}
+                        // change execution context
+                        self.context.push_context(ctx_id);
                         return Ok(ExecStatus::Running);
                     },
-                    Value::Function(FnKind::Native(func)) => {
+                    Value::Function(FnKind::Native(func), ctx_id) => {
                         let mut args = Vec::new();
+                        // change execution context
+                        self.context.push_context(ctx_id);
                         // pass in arguments
                         while let Some(value) = self.passthrough.pop() {
                             args.push(value);
@@ -193,7 +198,10 @@ impl <'inst> Executor <'inst> {
                 while let Some(value) = self.passthrough.pop() {
                     self.push_value(value);
                 }
+                // got back to previous execution point
                 let _ = self.execution_pointers.pop();
+                // got back to previous execution context
+                self.context.pop_context();
             },
             // Loop Context Management
             NewLoopCtx => self.context.add_loop_scope(),
@@ -338,8 +346,10 @@ impl <'inst> Executor <'inst> {
             self.execute()?;
         }
         // perform the call
-        match self.load(name, &GLOBAL_SCOPE_LABEL.into()) {
-            Value::Function(FnKind::Address(addr)) => {
+        match self.load(name) {
+            Value::Function(FnKind::Address(addr), ctx) => {
+                // change context
+                self.context.push_context(ctx);
                 // go to the function body
                 self.execution_pointers.push(addr);
                 // pass in arguments
@@ -348,7 +358,7 @@ impl <'inst> Executor <'inst> {
                 }
                 return self.execute();
             },
-            Value::Function(FnKind::Native(func)) => {
+            Value::Function(FnKind::Native(func), _) => {
                 let v = func(&mut args);
                 return Ok(Some(v));
             },
@@ -767,6 +777,34 @@ mod tests {
              }
              return level_1;
         }
+        let f = level_0();
+        f();
+        f()
+        "#;
+        let ast = Ast::from_str(&src).expect("Could not build ast");
+        let instructions = Compiler::compile(&ast.root).expect("compiler error");
+        let mut executor = Executor::from_instructions(&instructions);
+
+        assert_eq!(
+            executor.execute().unwrap(),
+            Some(Num(3.))
+        );
+    }
+    #[test]
+    fn test_closure_object() {
+        // same as above but assert that each closure has a different scope chain
+        let src = r#"
+        function level_0() {
+             let a = 1;
+             function level_1() {
+                 a = a + 1; 
+                 return a;
+             }
+             return level_1;
+        }
+        let f = level_0();
+        f();
+        f();
         let f = level_0();
         f();
         f()

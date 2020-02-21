@@ -177,7 +177,6 @@ impl Compiler {
         // traverse the AST for right to left, leaves first
         // and build an instructions list
         // executable by a simple stack machine
-        //for AstNode { expression, dependancies, .. } in AstTraverser::new(expression) {
         for ast_node in AstTraverser::new(expression) {
 
             // Collect the sub-expression instructions, if any
@@ -197,7 +196,7 @@ impl Compiler {
                     // just declare the global context
                     if ast_node.depth_level == 0 {
                         let mut root_expressions = vec![
-                            ProtoInstruction::NewContext(GLOBAL_SCOPE_LABEL.to_string(), None)
+                            ProtoInstruction::NewContext(GLOBAL_SCOPE_LABEL.to_string())
                         ];
                         for sub_insts in sub_instructions {
                             root_expressions.extend(sub_insts);
@@ -207,9 +206,9 @@ impl Compiler {
                         ec::compile_block(sub_instructions)?
                     }
                 },
-                LetDecl(name, _) => ec::compile_let(name, sub_instructions, ast_node.scope_label())?,
-                Local(id) => ec::compile_local(id, ast_node.scope_label())?,
-                Assign(id, ..) => ec::compile_assign(id, sub_instructions, ast_node.scope_label())?,
+                LetDecl(name, _) => ec::compile_let(name, sub_instructions)?,
+                Local(id) => ec::compile_local(id)?,
+                Assign(id, ..) => ec::compile_assign(id, sub_instructions)?,
                 Call(..) => ec::compile_call(sub_instructions)?,
                 FunctionDecl(name, args, _block) => {
                     ec::compile_function_decl(
@@ -217,7 +216,6 @@ impl Compiler {
                         name, args,
                         &mut labels, 
                         ast_node.scope_label(),
-                        ast_node.parent_scope_label(),
                     )?
                 },
                 BinaryOp(op, ..) => 
@@ -301,19 +299,23 @@ impl Compiler {
                     instructions.push(GotoIf(*offset));
                 },
                 ProtoInstruction::AddrLabel(..) => {},
-                ProtoInstruction::NewContext(ctx, parent_ctx) => instructions.push(NewContext(ctx, parent_ctx)),
-                ProtoInstruction::NewRef(s, ctx) => instructions.push(NewRef(s, ctx)),
-                ProtoInstruction::Load(s, ctx) => instructions.push(Load(s, ctx)),
-                ProtoInstruction::Store(s, ctx) => instructions.push(Store(s, ctx)),
+                ProtoInstruction::NewContext(ctx) => instructions.push(NewContext(ctx)),
+                ProtoInstruction::NewRef(s) => instructions.push(NewRef(s)),
+                ProtoInstruction::NewFunction(label) => {
+                    let offset = label_to_offset.get(&label)?;
+                    instructions.push(NewFunction(FnKind::Address(*offset)));
+                },
+                ProtoInstruction::Load(s) => instructions.push(Load(s)),
+                ProtoInstruction::Store(s) => instructions.push(Store(s)),
                 ProtoInstruction::Val(proto_val) => {
                     use Value::*;
                     let val = match proto_val {
                         ProtoValue::Str(s) => Str(s),
                         ProtoValue::Bool(b) => Bool(b),
                         ProtoValue::Num(n) => Num(n),
-                        ProtoValue::Function(label) => {
+                        ProtoValue::Function(label, ctx) => {
                             let offset = label_to_offset.get(&label)?;
-                            Function(FnKind::Address(*offset))
+                            Function(FnKind::Address(*offset), ctx)
                         },
                         ProtoValue::Null => Null,
                         ProtoValue::Undefined => Undefined,

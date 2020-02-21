@@ -4,12 +4,14 @@
 use crate::ast::{
     Const,
 };
+use crate::builtins::{
+    LexicalLabel,
+    ContextID,
+};
 
 /// Label are references to code location,
 /// those are later solved into addresses 
 pub type Label = usize;
-/// defines a lexical scope
-pub type ContextLabel = String;
 
 #[derive(Debug,Clone,PartialEq)]
 pub enum ProtoValue {
@@ -20,7 +22,7 @@ pub enum ProtoValue {
     /// boolean `true` or `false`
     Bool(bool),
     /// A function address
-    Function(Label),
+    Function(Label, ContextID),
     /// 
     Null,
     /// 
@@ -127,15 +129,17 @@ pub enum ProtoInstruction {
     Continue,
     // Variable bindings
     /// Create a new variable binding into a given Context
-    NewRef(String, ContextLabel), 
+    NewRef(String), 
+    /// Create a new function, which hold an adress label and the current scope
+    NewFunction(Label), 
     /// Loads a Value, indentified by its name and Context label
-    Load(String, ContextLabel),
+    Load(String),
     /// pop the stack and store the value into the variable pointed by `String`
     /// if the stack is empty, store `Value::Undefined`
-    Store(String, ContextLabel), 
+    Store(String), 
     /// Creates a new context, the first label is the new context, 
     /// the second one is its parent (wrapped in an option, to handle the root context)
-    NewContext(ContextLabel, Option<ContextLabel>), 
+    NewContext(LexicalLabel), 
     /// Create a value and push it onto the stack
     Val(ProtoValue),
     /// Call a function

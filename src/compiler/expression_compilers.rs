@@ -1,9 +1,11 @@
+use crate::builtins::{
+    LexicalLabel,
+};
 use crate::compiler::proto_instructions::{
     ProtoValue,
     ProtoInstruction,
     ProtoInstruction::*,
     LabelGenerator,
-    ContextLabel,
     Addr,
     AddrKind,
 };
@@ -122,14 +124,14 @@ pub fn compile_if(mut sub_instructions: Vec<Vec<ProtoInstruction>>, labels: &mut
 ///     Store 'id' 'ctx'
 /// *`let id;`  is compiled as:
 ///     NewRef 'id' 'ctx'
-pub fn compile_let(id: &str, mut sub_instructions: Vec<Vec<ProtoInstruction>>, ctx: ContextLabel) -> Option<Vec<ProtoInstruction>> {
+pub fn compile_let(id: &str, mut sub_instructions: Vec<Vec<ProtoInstruction>>) -> Option<Vec<ProtoInstruction>> {
     let mut instructions = Vec::new();
     if let Some(sub_inst) = sub_instructions.pop() {
         instructions.extend(sub_inst);
-        instructions.push(NewRef(id.into(), ctx.clone()));
-        instructions.push(Store(id.into(), ctx.clone()));
+        instructions.push(NewRef(id.into()));
+        instructions.push(Store(id.into()));
     } else {
-        instructions.push(NewRef(id.into(), ctx.clone()));
+        instructions.push(NewRef(id.into()));
     }
     Some(instructions)
 }
@@ -137,8 +139,8 @@ pub fn compile_let(id: &str, mut sub_instructions: Vec<Vec<ProtoInstruction>>, c
 /// Build the instructions needed to run a Local expression.
 /// `a`  is compiled as:
 ///     Load 'a'
-pub fn compile_local(id: &str, ctx: ContextLabel) -> Option<Vec<ProtoInstruction>> {
-    Some(vec![Load(id.into(), ctx)])
+pub fn compile_local(id: &str) -> Option<Vec<ProtoInstruction>> {
+    Some(vec![Load(id.into())])
 }
 
 /// Build the intructions needed to run a Call expression
@@ -172,29 +174,29 @@ pub fn compile_call(mut sub_instructions: Vec<Vec<ProtoInstruction>>) -> Option<
 
 /// Build the intructions needed to run a FunctionDecl expression
 /// So `function id(a, b) { <expr> }` is compiled as:
-///     Goto(end)       // skip the function block if were not calling it
-///     AddrLabel(start)    // address of the function
-///     NewRef 'a'      // args
+///     Goto(end)               // skip the function block if were not calling it
+///     AddrLabel(start)        // address of the function
+///     NewContext(ctx)         // creates a new context 
+///     NewRef 'a'              // args
 ///     Store 'a'
 ///     NewRef 'b'
 ///     Store 'b'
-///     <expr>              // the function block instructions
-///     ProtoValue(Undefined)    // Return a value no matter what
+///     <expr>                  // the function block instructions
+///     ProtoValue(Undefined)   // Return a value no matter what
 ///     PushToNext(1)
-///     FnRet               // quit the function evaluation 
+///     FnRet                   // quit the function evaluation 
 ///     AddrLabel(end)          // the piece of code that is executed when the function is 
-///                         // declared
-///     ProtoValue(start) // Put the address of the function into a var `id`
-///     NewRef 'id'
-///     Store 'id'
+///                             // declared
+///     NewFunction(start)      // creates a new Function object
+///     NewRef 'id'             // creates a new Reference `id`
+///     Store 'id'              // stores the function object into it
 ///     
 pub fn compile_function_decl(
     mut sub_instructions: Vec<Vec<ProtoInstruction>>,
     name: &str,
     args: &Vec<String>,
     labels: &mut LabelGenerator,
-    ctx: ContextLabel,
-    parent_ctx: Option<ContextLabel>,
+    ctx: LexicalLabel,
     ) -> Option<Vec<ProtoInstruction>> {
     let mut instructions = Vec::new();
     // set the address of the function start and end
@@ -205,12 +207,12 @@ pub fn compile_function_decl(
     // set the `start` label here
     instructions.push(AddrLabel(start)); 
     // Build a new Context
-    instructions.push(NewContext(ctx.clone(), parent_ctx.clone())); 
+    instructions.push(NewContext(ctx.clone())); 
     
     // load args
     for arg in args {
-        instructions.push(NewRef(arg.clone(), ctx.clone()));
-        instructions.push(Store(arg.clone(), ctx.clone()));
+        instructions.push(NewRef(arg.clone()));
+        instructions.push(Store(arg.clone()));
     }
     
     // process the function block
@@ -235,10 +237,11 @@ pub fn compile_function_decl(
     // set the end address
     instructions.push(AddrLabel(end)); 
 
-    // set the variable that will hold the function address
-    instructions.push(Val(ProtoValue::Function(start.addr)));
-    instructions.push(NewRef(name.into(), parent_ctx.clone()?));
-    instructions.push(Store(name.into(), parent_ctx.clone()?));
+    // create a function object
+    instructions.push(NewFunction(start.addr));
+    // set the variable that will hold the function object
+    instructions.push(NewRef(name.into()));
+    instructions.push(Store(name.into()));
 
     Some(instructions)
 }
@@ -339,9 +342,9 @@ pub fn compile_logical_op(op: &LogicalOp, mut sub_instructions: Vec<Vec<ProtoIns
 /// So `id = <expr>` is compiled as:
 ///     <expr>
 ///     Assign(id)
-pub fn compile_assign(name: &str, mut sub_instructions: Vec<Vec<ProtoInstruction>>, ctx: ContextLabel) -> Option<Vec<ProtoInstruction>> {
+pub fn compile_assign(name: &str, mut sub_instructions: Vec<Vec<ProtoInstruction>>) -> Option<Vec<ProtoInstruction>> {
     let mut instructions = sub_instructions.pop()?;
-    instructions.push(Store(name.into(), ctx));
+    instructions.push(Store(name.into()));
     Some(instructions)
 }
 
@@ -433,7 +436,7 @@ mod test {
         assert_eq!(
             Compiler::preprocess(&ast.root).unwrap(),
             vec![
-                NewContext(GLOBAL_SCOPE_LABEL.into(), None),
+                NewContext(GLOBAL_SCOPE_LABEL.into()),
                 Val(Bool(true)),
                 GotoIf(0),
                 Goto(1),
@@ -453,7 +456,7 @@ mod test {
         assert_eq!(
             Compiler::preprocess(&ast.root).unwrap(),
             vec![
-                NewContext(GLOBAL_SCOPE_LABEL.into(), None),
+                NewContext(GLOBAL_SCOPE_LABEL.into()),
                 Val(Bool(true)),
                 GotoIf(0),
                 NewStack,
@@ -475,18 +478,18 @@ mod test {
         assert_eq!(
             Compiler::preprocess(&ast.root).unwrap(),
             vec![
-                NewContext(GLOBAL_SCOPE_LABEL.into(), None),
-                NewRef("some_ref".into(), GLOBAL_SCOPE_LABEL.into()),
+                NewContext(GLOBAL_SCOPE_LABEL.into()),
+                NewRef("some_ref".into()),
             ],
         );
         let ast = Ast::from_str("let some_ref = true;").unwrap();
         assert_eq!(
             Compiler::preprocess(&ast.root).unwrap(),
             vec![
-                NewContext(GLOBAL_SCOPE_LABEL.into(), None),
+                NewContext(GLOBAL_SCOPE_LABEL.into()),
                 Val(Bool(true)),
-                NewRef("some_ref".into(), GLOBAL_SCOPE_LABEL.into()),
-                Store("some_ref".into(), GLOBAL_SCOPE_LABEL.into()),
+                NewRef("some_ref".into()),
+                Store("some_ref".into()),
             ],
         );
     }
@@ -497,8 +500,8 @@ mod test {
         assert_eq!(
             Compiler::preprocess(&ast.root).unwrap(),
             vec![
-                NewContext(GLOBAL_SCOPE_LABEL.into(), None),
-                Load("a".into(), GLOBAL_SCOPE_LABEL.to_string()),
+                NewContext(GLOBAL_SCOPE_LABEL.into()),
+                Load("a".into()),
             ],
         );
     }
@@ -508,7 +511,7 @@ mod test {
         assert_eq!(
             Compiler::preprocess(&ast.root).unwrap(),
             vec![
-                NewContext(GLOBAL_SCOPE_LABEL.into(), None),
+                NewContext(GLOBAL_SCOPE_LABEL.into()),
                 NewStack,
                 Val(Num(1.)),
                 ClearStack,
@@ -526,11 +529,11 @@ mod test {
         assert_eq!(
             Compiler::preprocess(&ast.root).unwrap(),
             vec![
-                NewContext(GLOBAL_SCOPE_LABEL.into(), None),
-                Load("b".into(), GLOBAL_SCOPE_LABEL.to_string()),
-                Load("a".into(), GLOBAL_SCOPE_LABEL.to_string()),
+                NewContext(GLOBAL_SCOPE_LABEL.into()),
+                Load("b".into()),
+                Load("a".into()),
                 PushToNext(2),
-                Load("foo".into(), GLOBAL_SCOPE_LABEL.to_string()),
+                Load("foo".into()),
                 FnCall,
             ],
         );
@@ -539,10 +542,10 @@ mod test {
         assert_eq!(
             Compiler::preprocess(&ast.root).unwrap(),
             vec![
-                NewContext(GLOBAL_SCOPE_LABEL.into(), None),
-                Load("a".into(), GLOBAL_SCOPE_LABEL.to_string()),
+                NewContext(GLOBAL_SCOPE_LABEL.into()),
+                Load("a".into()),
                 PushToNext(1),
-                Load("foo".into(), GLOBAL_SCOPE_LABEL.to_string()),
+                Load("foo".into()),
                 FnCall,
             ],
         );
@@ -551,8 +554,8 @@ mod test {
         assert_eq!(
             Compiler::preprocess(&ast.root).unwrap(),
             vec![
-                NewContext(GLOBAL_SCOPE_LABEL.into(), None),
-                Load("foo".into(), GLOBAL_SCOPE_LABEL.to_string()),
+                NewContext(GLOBAL_SCOPE_LABEL.into()),
+                Load("foo".into()),
                 FnCall,
             ],
         );
@@ -563,21 +566,21 @@ mod test {
         assert_eq!(
             Compiler::preprocess(&ast.root).unwrap(),
             vec![
-                NewContext(GLOBAL_SCOPE_LABEL.into(), None),
+                NewContext(GLOBAL_SCOPE_LABEL.into()),
                 Goto(1),  // skip function block if we're not calling it
                 AddrLabel(Addr { addr: 0, kind: AddrKind::BeginFunction } ), // begin address
-                NewContext("global__foo_0".into(), Some(GLOBAL_SCOPE_LABEL.to_string())),
-                NewRef("a".into(), "global__foo_0".into()), // first arg 
-                Store("a".into(), "global__foo_0".into()),
-                NewRef("b".into(), "global__foo_0".into()), // 2nd arg
-                Store("b".into(), "global__foo_0".into()),
+                NewContext("global__foo_0".into()),
+                NewRef("a".into()), // first arg 
+                Store("a".into()),
+                NewRef("b".into()), // 2nd arg
+                Store("b".into()),
                 Val(Bool(true)), // function block
                 PushToNext(1),   
                 FnRet,
                 AddrLabel(Addr { addr: 1, kind: AddrKind::EndFunction } ), // begin address
-                Val(Function(0)), // put function address into a `foo` var
-                NewRef("foo".into(), GLOBAL_SCOPE_LABEL.to_string()),
-                Store("foo".into(), GLOBAL_SCOPE_LABEL.to_string()),
+                NewFunction(0), // put function address into a `foo` var
+                NewRef("foo".into()),
+                Store("foo".into()),
             ],
         );
         // test automatic "return undefined"
@@ -585,21 +588,21 @@ mod test {
         assert_eq!(
             Compiler::preprocess(&ast.root).unwrap(),
             vec![
-                NewContext(GLOBAL_SCOPE_LABEL.into(), None),
+                NewContext(GLOBAL_SCOPE_LABEL.into()),
                 Goto(1),  // skip function block if we're not calling it
                 AddrLabel(Addr { addr: 0, kind: AddrKind::BeginFunction } ), // begin address
-                NewContext("global__foo_0".into(), Some(GLOBAL_SCOPE_LABEL.to_string())),
-                NewRef("a".into(), "global__foo_0".into()), // first arg 
-                Store("a".into(), "global__foo_0".into()),
-                NewRef("b".into(), "global__foo_0".into()), // 2nd arg
-                Store("b".into(), "global__foo_0".into()),
+                NewContext("global__foo_0".into()),
+                NewRef("a".into()), // first arg 
+                Store("a".into()),
+                NewRef("b".into()), // 2nd arg
+                Store("b".into()),
                 Val(Undefined),  // backup return call
                 PushToNext(1),
                 FnRet,
                 AddrLabel(Addr { addr: 1, kind: AddrKind::EndFunction } ), // begin address
-                Val(Function(0)), // put function address into a `foo` var
-                NewRef("foo".into(), GLOBAL_SCOPE_LABEL.into()),
-                Store("foo".into(), GLOBAL_SCOPE_LABEL.into()),
+                NewFunction(0), // put function address into a `foo` var
+                NewRef("foo".into()),
+                Store("foo".into()),
             ],
         );
     }
@@ -609,9 +612,9 @@ mod test {
         assert_eq!(
             Compiler::preprocess(&ast.root).unwrap(),
             vec![
-                NewContext(GLOBAL_SCOPE_LABEL.into(), None),
+                NewContext(GLOBAL_SCOPE_LABEL.into()),
                 Val(Num(2.)),
-                Store("a".into(), GLOBAL_SCOPE_LABEL.into()),
+                Store("a".into()),
             ],
         );
     }
@@ -621,7 +624,7 @@ mod test {
         assert_eq!(
             Compiler::preprocess(&ast.root).unwrap(),
             vec![
-                NewContext(GLOBAL_SCOPE_LABEL.into(), None),
+                NewContext(GLOBAL_SCOPE_LABEL.into()),
                 Val(Num(2.)),
                 Val(Num(1.)),
                 Add,
@@ -634,7 +637,7 @@ mod test {
         assert_eq!(
             Compiler::preprocess(&ast.root).unwrap(),
             vec![
-                NewContext(GLOBAL_SCOPE_LABEL.into(), None),
+                NewContext(GLOBAL_SCOPE_LABEL.into()),
                 Val(Num(2.)),
                 Val(Num(1.)),
                 LessThanOrEqual
@@ -648,7 +651,7 @@ mod test {
         assert_eq!(
             Compiler::preprocess(&ast.root).unwrap(),
             vec![
-                NewContext(GLOBAL_SCOPE_LABEL.into(), None),
+                NewContext(GLOBAL_SCOPE_LABEL.into()),
                 Val(Bool(true)),
                 GotoIf(1), // success path
                 Goto(0), // failure path
@@ -663,7 +666,7 @@ mod test {
         assert_eq!(
             Compiler::preprocess(&ast.root).unwrap(),
             vec![
-                NewContext(GLOBAL_SCOPE_LABEL.into(), None),
+                NewContext(GLOBAL_SCOPE_LABEL.into()),
                 Val(Bool(true)),
                 GotoIf(0), // success path
                 Val(Bool(false)),
@@ -678,7 +681,7 @@ mod test {
         assert_eq!(
             Compiler::preprocess(&ast.root).unwrap(),
             vec![
-                NewContext(GLOBAL_SCOPE_LABEL.into(), None),
+                NewContext(GLOBAL_SCOPE_LABEL.into()),
                 Val(Bool(true)),
                 Not,
             ],
@@ -687,7 +690,7 @@ mod test {
         assert_eq!(
             Compiler::preprocess(&ast.root).unwrap(),
             vec![
-                NewContext(GLOBAL_SCOPE_LABEL.into(), None),
+                NewContext(GLOBAL_SCOPE_LABEL.into()),
                 Val(Num(1.)),
                 Plus,
             ],
@@ -696,7 +699,7 @@ mod test {
         assert_eq!(
             Compiler::preprocess(&ast.root).unwrap(),
             vec![
-                NewContext(GLOBAL_SCOPE_LABEL.into(), None),
+                NewContext(GLOBAL_SCOPE_LABEL.into()),
                 Val(Num(1.)),
                 Minus,
             ],
@@ -708,20 +711,20 @@ mod test {
         assert_eq!(
             Compiler::preprocess(&ast.root).unwrap(),
             vec![
-                NewContext(GLOBAL_SCOPE_LABEL.into(), None),
+                NewContext(GLOBAL_SCOPE_LABEL.into()),
                 NewLoopCtx,
                 AddrLabel(Addr { addr: 0, kind: AddrKind::BeginLoop }), // begin
                 Val(Num(2.)),
-                Load("a".into(), GLOBAL_SCOPE_LABEL.into()),
+                Load("a".into()),
                 LessThan,
                 GotoIf(1),
                 Goto(2),
                 AddrLabel(Addr { addr: 1, kind: AddrKind::Jump }), // block 
                 NewStack,
                 Val(Num(1.)),
-                Load("a".into(), GLOBAL_SCOPE_LABEL.into()),
+                Load("a".into()),
                 Add,
-                Store("a".into(), GLOBAL_SCOPE_LABEL.into()),
+                Store("a".into()),
                 DelStack,
                 Goto(0),
                 AddrLabel(Addr { addr: 2, kind: AddrKind::EndLoop }), // block 

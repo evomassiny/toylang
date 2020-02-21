@@ -4,4 +4,4 @@ mod expression_compilers;
 mod compiler;
 
 pub use compiler::{Compiler, GLOBAL_SCOPE_LABEL};
-pub use instructions::{Instruction,ContextLabel};
+pub use instructions::{Instruction};
