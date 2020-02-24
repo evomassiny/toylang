@@ -40,43 +40,6 @@ impl <'n> AstNode <'n> {
             .collect::<Vec<String>>()
             .join(SCOPE_LABEL_SEPARATOR)
     }
-
-    /// returns the label of the lexical scope 
-    /// (eg the execution context)
-    /// of this AstNode, 
-    fn parent_scope_label(&self) -> Option<String> {
-        // filter out the `None` instance, which represents
-        // AST nodes that don't defines a new scope
-        let mut labels = self.scope_label_chain
-            .iter()
-            .filter_map(Option::as_ref)
-            .collect::<Vec<&String>>();
-
-        // remove the last one, to get the parent
-        // scope
-        let _ = labels.pop();
-        // return None if there is no parent Global context
-        if labels.len() == 0 {
-            return None;
-        }
-        // join them into one big label
-        let label = labels.into_iter()
-            .map(ToString::to_string)
-            .collect::<Vec<String>>()
-            .join(SCOPE_LABEL_SEPARATOR);
-
-        Some(label)
-    }
-
-    /// returns either or not this AST node 
-    /// leads to a new lexical scope (eg: execution context)
-    pub fn is_new_lexical_scope(&self) -> bool {
-        match self.scope_label_chain.last() {
-            Some(None) => false,
-            Some(Some(_)) => true,
-            None => false,
-        }
-    }
 }
 
 /// An Iterator over an Abstract Syntaxe Tree
@@ -192,12 +155,9 @@ impl Compiler {
                 Return(_) => ec::compile_return(sub_instructions)?,
                 If(..) => ec::compile_if(sub_instructions, &mut labels)?,
                 Block(..) => {
-                    // For the the root expression 
-                    // just declare the global context
+                    // Don't treat the root expression as a block, just as a instruction list
                     if ast_node.depth_level == 0 {
-                        let mut root_expressions = vec![
-                            ProtoInstruction::NewContext(GLOBAL_SCOPE_LABEL.to_string())
-                        ];
+                        let mut root_expressions = vec![];
                         for sub_insts in sub_instructions {
                             root_expressions.extend(sub_insts);
                         }

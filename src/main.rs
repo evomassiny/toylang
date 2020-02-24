@@ -45,6 +45,9 @@ fn main() -> std::io::Result<()> {
     let mut executor = Executor::from_instructions(&instructions);
     let value = executor.execute().expect("No value returned");
     println!("\nExecution returned: {:#?}", value);
+    let ctx_id = executor.context.current_context().unwrap();
+    println!("\nremaining context: {:#?}", executor.context.context_store.get(&ctx_id));
+    
     Ok(())
 }
 

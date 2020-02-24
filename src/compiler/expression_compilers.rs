@@ -6,8 +6,6 @@ use crate::compiler::proto_instructions::{
     ProtoInstruction,
     ProtoInstruction::*,
     LabelGenerator,
-    Addr,
-    AddrKind,
 };
 use crate::ast::{
     Const,
@@ -421,7 +419,7 @@ pub fn compile_binary_op(op: &BinaryOp, sub_instructions: Vec<Vec<ProtoInstructi
 #[cfg(test)]
 mod test {
     use crate::ast::Ast;
-    use crate::compiler::compiler::{Compiler, GLOBAL_SCOPE_LABEL};
+    use crate::compiler::compiler::Compiler;
     use crate::compiler::proto_instructions::{ProtoValue,ProtoInstruction,Addr,AddrKind};
     use ProtoInstruction::*;
     use ProtoValue::*;
@@ -436,7 +434,6 @@ mod test {
         assert_eq!(
             Compiler::preprocess(&ast.root).unwrap(),
             vec![
-                NewContext(GLOBAL_SCOPE_LABEL.into()),
                 Val(Bool(true)),
                 GotoIf(0),
                 Goto(1),
@@ -456,7 +453,6 @@ mod test {
         assert_eq!(
             Compiler::preprocess(&ast.root).unwrap(),
             vec![
-                NewContext(GLOBAL_SCOPE_LABEL.into()),
                 Val(Bool(true)),
                 GotoIf(0),
                 NewStack,
@@ -478,7 +474,6 @@ mod test {
         assert_eq!(
             Compiler::preprocess(&ast.root).unwrap(),
             vec![
-                NewContext(GLOBAL_SCOPE_LABEL.into()),
                 NewRef("some_ref".into()),
             ],
         );
@@ -486,7 +481,6 @@ mod test {
         assert_eq!(
             Compiler::preprocess(&ast.root).unwrap(),
             vec![
-                NewContext(GLOBAL_SCOPE_LABEL.into()),
                 Val(Bool(true)),
                 NewRef("some_ref".into()),
                 Store("some_ref".into()),
@@ -500,7 +494,6 @@ mod test {
         assert_eq!(
             Compiler::preprocess(&ast.root).unwrap(),
             vec![
-                NewContext(GLOBAL_SCOPE_LABEL.into()),
                 Load("a".into()),
             ],
         );
@@ -511,7 +504,6 @@ mod test {
         assert_eq!(
             Compiler::preprocess(&ast.root).unwrap(),
             vec![
-                NewContext(GLOBAL_SCOPE_LABEL.into()),
                 NewStack,
                 Val(Num(1.)),
                 ClearStack,
@@ -529,7 +521,6 @@ mod test {
         assert_eq!(
             Compiler::preprocess(&ast.root).unwrap(),
             vec![
-                NewContext(GLOBAL_SCOPE_LABEL.into()),
                 Load("b".into()),
                 Load("a".into()),
                 PushToNext(2),
@@ -542,7 +533,6 @@ mod test {
         assert_eq!(
             Compiler::preprocess(&ast.root).unwrap(),
             vec![
-                NewContext(GLOBAL_SCOPE_LABEL.into()),
                 Load("a".into()),
                 PushToNext(1),
                 Load("foo".into()),
@@ -554,7 +544,6 @@ mod test {
         assert_eq!(
             Compiler::preprocess(&ast.root).unwrap(),
             vec![
-                NewContext(GLOBAL_SCOPE_LABEL.into()),
                 Load("foo".into()),
                 FnCall,
             ],
@@ -566,7 +555,6 @@ mod test {
         assert_eq!(
             Compiler::preprocess(&ast.root).unwrap(),
             vec![
-                NewContext(GLOBAL_SCOPE_LABEL.into()),
                 Goto(1),  // skip function block if we're not calling it
                 AddrLabel(Addr { addr: 0, kind: AddrKind::BeginFunction } ), // begin address
                 NewContext("global__foo_0".into()),
@@ -588,7 +576,6 @@ mod test {
         assert_eq!(
             Compiler::preprocess(&ast.root).unwrap(),
             vec![
-                NewContext(GLOBAL_SCOPE_LABEL.into()),
                 Goto(1),  // skip function block if we're not calling it
                 AddrLabel(Addr { addr: 0, kind: AddrKind::BeginFunction } ), // begin address
                 NewContext("global__foo_0".into()),
@@ -612,7 +599,6 @@ mod test {
         assert_eq!(
             Compiler::preprocess(&ast.root).unwrap(),
             vec![
-                NewContext(GLOBAL_SCOPE_LABEL.into()),
                 Val(Num(2.)),
                 Store("a".into()),
             ],
@@ -624,7 +610,6 @@ mod test {
         assert_eq!(
             Compiler::preprocess(&ast.root).unwrap(),
             vec![
-                NewContext(GLOBAL_SCOPE_LABEL.into()),
                 Val(Num(2.)),
                 Val(Num(1.)),
                 Add,
@@ -637,7 +622,6 @@ mod test {
         assert_eq!(
             Compiler::preprocess(&ast.root).unwrap(),
             vec![
-                NewContext(GLOBAL_SCOPE_LABEL.into()),
                 Val(Num(2.)),
                 Val(Num(1.)),
                 LessThanOrEqual
@@ -651,7 +635,6 @@ mod test {
         assert_eq!(
             Compiler::preprocess(&ast.root).unwrap(),
             vec![
-                NewContext(GLOBAL_SCOPE_LABEL.into()),
                 Val(Bool(true)),
                 GotoIf(1), // success path
                 Goto(0), // failure path
@@ -666,7 +649,6 @@ mod test {
         assert_eq!(
             Compiler::preprocess(&ast.root).unwrap(),
             vec![
-                NewContext(GLOBAL_SCOPE_LABEL.into()),
                 Val(Bool(true)),
                 GotoIf(0), // success path
                 Val(Bool(false)),
@@ -681,7 +663,6 @@ mod test {
         assert_eq!(
             Compiler::preprocess(&ast.root).unwrap(),
             vec![
-                NewContext(GLOBAL_SCOPE_LABEL.into()),
                 Val(Bool(true)),
                 Not,
             ],
@@ -690,7 +671,6 @@ mod test {
         assert_eq!(
             Compiler::preprocess(&ast.root).unwrap(),
             vec![
-                NewContext(GLOBAL_SCOPE_LABEL.into()),
                 Val(Num(1.)),
                 Plus,
             ],
@@ -699,7 +679,6 @@ mod test {
         assert_eq!(
             Compiler::preprocess(&ast.root).unwrap(),
             vec![
-                NewContext(GLOBAL_SCOPE_LABEL.into()),
                 Val(Num(1.)),
                 Minus,
             ],
@@ -711,7 +690,6 @@ mod test {
         assert_eq!(
             Compiler::preprocess(&ast.root).unwrap(),
             vec![
-                NewContext(GLOBAL_SCOPE_LABEL.into()),
                 NewLoopCtx,
                 AddrLabel(Addr { addr: 0, kind: AddrKind::BeginLoop }), // begin
                 Val(Num(2.)),

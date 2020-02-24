@@ -1,8 +1,9 @@
-use crate::compiler::{
-    Instruction,
-    GLOBAL_SCOPE_LABEL,
+use crate::compiler::Instruction;
+use crate::builtins::{
+    FnKind,
+    Value,
+    LexicalLabel,
 };
-use crate::builtins::{FnKind,Value,LexicalLabel,ContextID};
 use crate::executor::contexts::{
     Context,
     ContextError,
@@ -82,15 +83,15 @@ impl <'inst> Executor <'inst> {
     }
 
     /// stores a value into the stack
-    fn push_value(&mut self, val: Value) {
-        self.context.push_value(val);
+    fn push_value(&mut self, val: Value) -> Result<(), ExecutionError> {
+        self.context.push_value(val).map_err(Into::into)
     }
 
     /// returns the last pushed value
     fn pop_value(&mut self) -> Result<Value, ExecutionError> {
         match self.context.pop_value() {
             Some(value) => Ok(value),
-            None => Err(exec_error!("empty stack"))
+            None => Err(exec_error!("Cannot pop value from empty stack"))
         }
     }
 
@@ -138,7 +139,7 @@ impl <'inst> Executor <'inst> {
                 // pop stack, and cast as bool
                 let value_bool: bool = (&self.pop_value()?).into();
                 // re-insert the boolean back onto the stack
-                self.push_value(Value::Bool(value_bool));
+                self.push_value(Value::Bool(value_bool))?;
                 if value_bool {
                     self.goto(addr);
                     return Ok(ExecStatus::Running);
@@ -147,28 +148,27 @@ impl <'inst> Executor <'inst> {
             // Refs to Values
             NewContext(ref ctx) => {
                 self.new_context(ctx);
-                self.context.add_block_scope();
                 // pass in arguments
                 while let Some(value) = self.passthrough.pop() {
-                    self.push_value(value);
+                    self.push_value(value)?;
                 }
             },
             NewFunction(ref fn_kind) => {
                 // load the current idx
                 let ctx_id = self.context.current_context()?;
                 // create a function from it and push it to the stack
-                self.push_value(Value::Function(fn_kind.clone(), ctx_id));
+                self.push_value(Value::Function(fn_kind.clone(), ctx_id))?;
             },
             NewRef(ref name) => self.create_ref(name)?,
             Load(ref name) => {
                 let value = self.load(name);
-                self.push_value(value);
+                self.push_value(value)?;
             },
             Store(ref name) => {
                 let value = self.pop_value()?;
                 self.store(name, value)?;
             },
-            Val(ref value) => self.push_value(value.clone()),
+            Val(ref value) => self.push_value(value.clone())?,
             // Functions Context management
             FnCall => {
                 let value = self.pop_value()?; 
@@ -188,25 +188,25 @@ impl <'inst> Executor <'inst> {
                         while let Some(value) = self.passthrough.pop() {
                             args.push(value);
                         }
-                        self.push_value(func(&mut args));
+                        self.push_value(func(&mut args))?;
                     },
                     _ => return Err(exec_error!("value is not callable")),
                 }
             },
             FnRet => {
-                // pass result values
-                while let Some(value) = self.passthrough.pop() {
-                    self.push_value(value);
-                }
                 // got back to previous execution point
                 let _ = self.execution_pointers.pop();
                 // got back to previous execution context
                 self.context.pop_context();
+                // pass result values
+                while let Some(value) = self.passthrough.pop() {
+                    self.push_value(value)?;
+                }
             },
             // Loop Context Management
-            NewLoopCtx => self.context.add_loop_scope(),
-            DelLoopCtx => self.context.pop_loop_scope(),
-            PopToLoopCtx => self.context.pop_until_loop_scope(),
+            NewLoopCtx => self.context.add_loop_stack()?,
+            DelLoopCtx => self.context.pop_loop_stack()?,
+            PopToLoopCtx => self.context.pop_until_loop_stack()?,
             // Stack management
             PushToNext(nb) => {
                 for _ in 0..nb {
@@ -215,104 +215,104 @@ impl <'inst> Executor <'inst> {
                 }
             },
             NewStack => {
-                self.context.add_block_scope();
+                self.context.add_block_stack()?;
                 while let Some(value) = self.passthrough.pop() {
-                    self.push_value(value);
+                    self.push_value(value)?;
                 }
             },
-            ClearStack => self.context.flush_values(),
+            ClearStack => self.context.flush_values()?,
             DelStack => {
-                let _ = self.context.pop_scope()
-                    .ok_or(exec_error!("No scope in context"))?;
+                let _ = self.context.pop_stack()
+                    .ok_or(exec_error!("No stack in context"))?;
                 // pass the values to the current stack
                 while let Some(value) = self.passthrough.pop() {
-                    self.push_value(value);
+                    self.push_value(value)?;
                 }
             },
             And => {
                 let left_hand = self.pop_value()?;
                 let right_hand = self.pop_value()?;
-                self.push_value(Value::Bool((&left_hand).into() && (&right_hand).into()));
+                self.push_value(Value::Bool((&left_hand).into() && (&right_hand).into()))?;
             },
             Or => {
                 let left_hand = self.pop_value()?;
                 let right_hand = self.pop_value()?;
-                self.push_value(Value::Bool((&left_hand).into() || (&right_hand).into()));
+                self.push_value(Value::Bool((&left_hand).into() || (&right_hand).into()))?;
             },
             // arithemic operations
             Add => {
                 let left_hand = self.pop_value()?;
                 let right_hand = self.pop_value()?;
-                self.push_value(left_hand + right_hand);
+                self.push_value(left_hand + right_hand)?;
             },
             Sub => {
                 let left_hand = self.pop_value()?;
                 let right_hand = self.pop_value()?;
-                self.push_value(left_hand - right_hand);
+                self.push_value(left_hand - right_hand)?;
             },
             Mul => {
                 let left_hand = self.pop_value()?;
                 let right_hand = self.pop_value()?;
-                self.push_value(left_hand * right_hand);
+                self.push_value(left_hand * right_hand)?;
             },
             Div => {
                 let left_hand = self.pop_value()?;
                 let right_hand = self.pop_value()?;
-                self.push_value(left_hand / right_hand);
+                self.push_value(left_hand / right_hand)?;
             },
             Mod => {
                 let left_hand = self.pop_value()?;
                 let right_hand = self.pop_value()?;
-                self.push_value(left_hand % right_hand);
+                self.push_value(left_hand % right_hand)?;
             },
             Pow => {
                 let left_hand = self.pop_value()?;
                 let right_hand = self.pop_value()?;
-                self.push_value(left_hand.pow(&right_hand));
+                self.push_value(left_hand.pow(&right_hand))?;
             },
             // Comparison
             Equal => {
                 let left_hand = self.pop_value()?;
                 let right_hand = self.pop_value()?;
-                self.push_value(left_hand.is_equal(&right_hand));
+                self.push_value(left_hand.is_equal(&right_hand))?;
             },
             NotEqual => {
                 let left_hand = self.pop_value()?;
                 let right_hand = self.pop_value()?;
-                self.push_value(!left_hand.is_equal(&right_hand));
+                self.push_value(!left_hand.is_equal(&right_hand))?;
             },
             GreaterThan => {
                 let left_float: f64 = (&self.pop_value()?).into();
                 let right_float: f64 = (&self.pop_value()?).into();
-                self.push_value(Bool(left_float > right_float));
+                self.push_value(Bool(left_float > right_float))?;
             },
             GreaterThanOrEqual => {
                 let left_float: f64 = (&self.pop_value()?).into();
                 let right_float: f64 = (&self.pop_value()?).into();
-                self.push_value(Bool(left_float >= right_float));
+                self.push_value(Bool(left_float >= right_float))?;
             },
             LessThan => {
                 let left_float: f64 = (&self.pop_value()?).into();
                 let right_float: f64 = (&self.pop_value()?).into();
-                self.push_value(Bool(left_float < right_float));
+                self.push_value(Bool(left_float < right_float))?;
             },
             LessThanOrEqual => {
                 let left_float: f64 = (&self.pop_value()?).into();
                 let right_float: f64 = (&self.pop_value()?).into();
-                self.push_value(Bool(left_float <= right_float));
+                self.push_value(Bool(left_float <= right_float))?;
             },
             // Unary operations
             Not => {
                 let value = self.pop_value()?;
-                self.push_value(!value);
+                self.push_value(!value)?;
             },
             Plus => {
                 let value: f64 = (&self.pop_value()?).into();
-                self.push_value(Num(value));
+                self.push_value(Num(value))?;
             },
             Minus => {
                 let value: f64 = (&self.pop_value()?).into();
-                self.push_value(Num(-value));
+                self.push_value(Num(-value))?;
             },
         }
         self.goto_next();
@@ -354,7 +354,8 @@ impl <'inst> Executor <'inst> {
                 self.execution_pointers.push(addr);
                 // pass in arguments
                 for arg in args {
-                    self.push_value(arg);
+                    self.passthrough.push(arg);
+                    //self.push_value(arg);
                 }
                 return self.execute();
             },
@@ -371,10 +372,7 @@ impl <'inst> Executor <'inst> {
 mod tests {
     use crate::ast::Ast;
     use crate::executor::{Executor,ExecutionError};
-    use crate::compiler::{
-        Compiler,
-        GLOBAL_SCOPE_LABEL,
-    };
+    use crate::compiler::Compiler;
     use crate::builtins::Value;
     use Value::*;
 
@@ -721,7 +719,7 @@ mod tests {
         let instructions = Compiler::compile(&ast.root).expect("compiler error");
         let mut executor = Executor::from_instructions(&instructions);
         // add the function
-        let _ = executor.context.add_native_function("give_true", &GLOBAL_SCOPE_LABEL.to_string(), give_true);
+        let _ = executor.context.add_native_function("give_true", give_true);
 
         assert_eq!(
             executor.execute().unwrap(),
@@ -740,7 +738,7 @@ mod tests {
         let instructions = Compiler::compile(&ast.root).expect("compiler error");
         let mut executor = Executor::from_instructions(&instructions);
         // add the function
-        let _ = executor.context.add_native_function("add_two", &GLOBAL_SCOPE_LABEL.to_string(), add_two);
+        let _ = executor.context.add_native_function("add_two", add_two);
 
         assert_eq!(
             executor.execute().unwrap(),
@@ -757,11 +755,31 @@ mod tests {
         let ast = Ast::from_str(&src).expect("Could not build ast");
         let instructions = Compiler::compile(&ast.root).expect("compiler error");
         let mut executor = Executor::from_instructions(&instructions);
+        let _ = executor.execute();
 
         assert_eq!(
             executor.call_function(
                 "add_two",
                 vec![Num(22.)],
+            ).unwrap(),
+            Some(Num(24.))
+        );
+
+        // check if argument order is preserved
+        let src = r#"
+        function add_two_to_2nd(a, b) {
+            return b + 2;
+        }
+        "#;
+        let ast = Ast::from_str(&src).expect("Could not build ast");
+        let instructions = Compiler::compile(&ast.root).expect("compiler error");
+        let mut executor = Executor::from_instructions(&instructions);
+        let _ = executor.execute();
+
+        assert_eq!(
+            executor.call_function(
+                "add_two_to_2nd",
+                vec![Bool(true), Num(22.)],
             ).unwrap(),
             Some(Num(24.))
         );
@@ -789,9 +807,6 @@ mod tests {
             executor.execute().unwrap(),
             Some(Num(3.))
         );
-    }
-    #[test]
-    fn test_closure_object() {
         // same as above but assert that each closure has a different scope chain
         let src = r#"
         function level_0() {
@@ -802,12 +817,11 @@ mod tests {
              }
              return level_1;
         }
-        let f = level_0();
-        f();
-        f();
-        let f = level_0();
-        f();
-        f()
+        let foo = level_0();
+        foo();
+        let bar = level_0();
+        bar();
+        bar()
         "#;
         let ast = Ast::from_str(&src).expect("Could not build ast");
         let instructions = Compiler::compile(&ast.root).expect("compiler error");
@@ -815,7 +829,7 @@ mod tests {
 
         assert_eq!(
             executor.execute().unwrap(),
-            Some(Num(3.))
+            Some(Num(3.)),
         );
     }
 }
