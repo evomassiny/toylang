@@ -239,14 +239,25 @@ pub fn match_binary_op(tokens: &[Option<&Token>]) -> Option<(FlatExp, Vec<usize>
 /// * `-` followed by any token 
 /// * `+` followed by any token 
 /// * `!` followed by any token 
+/// * `--` followed by any token 
+/// * `++` followed by any token 
+/// * any token followed by `--`
+/// * any token followed by `++`
 pub fn match_unary_op(tokens: &[Option<&Token>]) -> Option<(FlatExp, Vec<usize>)> {
     if tokens.len() < 2 || tokens[1].is_none() {
         return None; 
     }
-    return match tokens[0] {
-        Some(&Token { kind: Operator(Add), ..}) => Some((FlatUnaryOp(UnaryOp::Plus), vec![0])),
-        Some(&Token { kind: Operator(Sub), ..}) => Some((FlatUnaryOp(UnaryOp::Minus), vec![0])),
-        Some(&Token { kind: Operator(Not), ..}) => Some((FlatUnaryOp(UnaryOp::Not), vec![0])),
+    return match (tokens[0], tokens[1]) {
+        // match '+foo', '-foo', '!foo' 
+        (Some(&Token { kind: Operator(Add), ..}), _) => Some((FlatUnaryOp(UnaryOp::Plus), vec![0])),
+        (Some(&Token { kind: Operator(Sub), ..}), _) => Some((FlatUnaryOp(UnaryOp::Minus), vec![0])),
+        (Some(&Token { kind: Operator(Not), ..}), _) => Some((FlatUnaryOp(UnaryOp::Not), vec![0])),
+        // match '++foo' and '--foo'
+        (Some(&Token { kind: Operator(Inc), .. }), Some(&Token { kind: Identifier(..), ..})) => Some((FlatUnaryOp(UnaryOp::PreInc), vec![0])),
+        (Some(&Token { kind: Operator(Dec), .. }), Some(&Token { kind: Identifier(..), ..})) => Some((FlatUnaryOp(UnaryOp::PreDec), vec![0])),
+        // match 'foo++' and 'foo--'
+        (Some(&Token { kind: Identifier(..), ..}), Some(&Token { kind: Operator(Inc), .. })) => Some((FlatUnaryOp(UnaryOp::PostInc), vec![1])),
+        (Some(&Token { kind: Identifier(..), ..}), Some(&Token { kind: Operator(Dec), .. })) => Some((FlatUnaryOp(UnaryOp::PostDec), vec![1])),
         _ => None,
     };
 }
@@ -950,6 +961,7 @@ mod test {
 
     #[test]
     fn match_unary_op_pattern() {
+        // test minus
         let tokens = lex("-1").unwrap();
         let unparsed_tokens: Vec<Option<&Token>> = tokens.iter().map(|t| Some(t)).collect();
         assert_eq!(
@@ -960,6 +972,7 @@ mod test {
             )),
             "Failed to match unary operation"
         );
+        // test plus
         let tokens = lex("+1").unwrap();
         let unparsed_tokens: Vec<Option<&Token>> = tokens.iter().map(|t| Some(t)).collect();
         assert_eq!(
@@ -970,6 +983,7 @@ mod test {
             )),
             "Failed to match unary operation"
         );
+        // test not
         let tokens = lex("!foo").unwrap();
         let unparsed_tokens: Vec<Option<&Token>> = tokens.iter().map(|t| Some(t)).collect();
         assert_eq!(
@@ -979,6 +993,50 @@ mod test {
                 vec![0]
             )),
             "Failed to match unary operation"
+        );
+        // test post increment
+        let tokens = lex("foo++").unwrap();
+        let unparsed_tokens: Vec<Option<&Token>> = tokens.iter().map(|t| Some(t)).collect();
+        assert_eq!(
+            patterns::match_unary_op(&unparsed_tokens),
+            Some((
+                FlatExp::FlatUnaryOp(UnaryOp::PostInc),
+                vec![1]
+            )),
+            "Failed to match unary operation ++"
+        );
+        // test post decrement
+        let tokens = lex("foo--").unwrap();
+        let unparsed_tokens: Vec<Option<&Token>> = tokens.iter().map(|t| Some(t)).collect();
+        assert_eq!(
+            patterns::match_unary_op(&unparsed_tokens),
+            Some((
+                FlatExp::FlatUnaryOp(UnaryOp::PostDec),
+                vec![1]
+            )),
+            "Failed to match unary operation --"
+        );
+        // test pre increment
+        let tokens = lex("++foo").unwrap();
+        let unparsed_tokens: Vec<Option<&Token>> = tokens.iter().map(|t| Some(t)).collect();
+        assert_eq!(
+            patterns::match_unary_op(&unparsed_tokens),
+            Some((
+                FlatExp::FlatUnaryOp(UnaryOp::PreInc),
+                vec![0]
+            )),
+            "Failed to match unary operation --"
+        );
+        // test pre decrement
+        let tokens = lex("--foo").unwrap();
+        let unparsed_tokens: Vec<Option<&Token>> = tokens.iter().map(|t| Some(t)).collect();
+        assert_eq!(
+            patterns::match_unary_op(&unparsed_tokens),
+            Some((
+                FlatExp::FlatUnaryOp(UnaryOp::PreDec),
+                vec![0]
+            )),
+            "Failed to match unary operation --"
         );
     }
 

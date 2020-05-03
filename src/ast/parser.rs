@@ -83,6 +83,14 @@ pub enum UnaryOp {
     Plus,
     /// `!i`
     Not,
+    /// `i++`
+    PostInc,
+    /// `i--
+    PostDec,
+    /// `++i`
+    PreInc,
+    /// `--i
+    PreDec,
 }
 
 #[derive(Clone, Debug, PartialEq)]

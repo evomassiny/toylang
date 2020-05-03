@@ -74,7 +74,7 @@ pub fn lex(src: &str) -> Result<Vec<Token>, Box<dyn Error>> {
         ).unwrap();
         static ref OPERATOR_PATTERN: Regex = Regex::new(
             // 2chars tokens must come first
-            r"^(?P<token>==|>=|<=|!=|\*\*|\|\||&&|\+|=|/|>|<|%|\*|!|\-)"
+            r"^(?P<token>==|>=|<=|!=|\*\*|\|\||&&|\+\+|\-\-|\+|=|/|>|<|%|\*|!|\-)"
         ).unwrap();
         static ref STRING_LITERAL_PATTERN: Regex = Regex::new(
             r#"^"(?P<token>(\\"|.)*?)""#
@@ -194,7 +194,7 @@ pub fn lex(src: &str) -> Result<Vec<Token>, Box<dyn Error>> {
             cursor.consume_n(separator_str.len());
             continue 'token_loop;
         }
-        // match puntuation
+        // match punctuation
         if let Some(caps) = OPERATOR_PATTERN.captures(remaining_src) {
             let operator_str: &str = caps.name("token").unwrap().as_str();
             let kind = match operator_str {
@@ -207,6 +207,8 @@ pub fn lex(src: &str) -> Result<Vec<Token>, Box<dyn Error>> {
                 ">=" => GreaterThanOrEq,
                 "<" => LessThan,
                 "<=" => LessThanOrEq,
+                "++" => Inc,
+                "--" => Dec,
                 "%" => Mod,
                 "*" => Mul,
                 "!" => Not,
@@ -350,6 +352,10 @@ mod test {
         assert_eq!(r[0].kind, Operator(Add));
         let r = lex("!").unwrap();
         assert_eq!(r[0].kind, Operator(Not));
+        let r = lex("++").unwrap();
+        assert_eq!(r[0].kind, Operator(Inc));
+        let r = lex("--").unwrap();
+        assert_eq!(r[0].kind, Operator(Dec));
     }
 
     #[test]

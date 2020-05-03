@@ -356,15 +356,75 @@ pub fn compile_assign(name: &str, mut sub_instructions: Vec<Vec<ProtoInstruction
 /// * So `- <expr>` is compiled as:
 ///     <expr>
 ///     Not
+/// * So `id ++` is compiled as:
+///     Load(id)
+///     Load(id)
+///     Val(Num(1.))
+///     Add
+///     Store(id)
+/// * So `++ id` is compiled as:
+///     Load(id)
+///     Val(Num(1.))
+///     Add
+///     Store(id)
+///     Load(id)
 pub fn compile_unary_op(op: &UnaryOp, mut sub_instructions: Vec<Vec<ProtoInstruction>>) -> Option<Vec<ProtoInstruction>> {
-    let mut instructions = sub_instructions.pop()?;
-    let inst = match *op {
-        UnaryOp::Minus => ProtoInstruction::Minus,
-        UnaryOp::Plus => ProtoInstruction::Plus,
-        UnaryOp::Not => ProtoInstruction::Not,
+    let mut operand_insts = sub_instructions.pop()?;
+    let insts: Vec<ProtoInstruction> = match *op {
+        UnaryOp::Minus => vec![ProtoInstruction::Minus],
+        UnaryOp::Plus => vec![ProtoInstruction::Plus],
+        UnaryOp::Not => vec![ProtoInstruction::Not],
+        UnaryOp::PreInc => {
+            let id = match &operand_insts[0] {
+                ProtoInstruction::Load(id) => id.clone(),
+                _ => return None,
+            };
+            vec![
+                ProtoInstruction::Val(ProtoValue::Num(1.0)),
+                ProtoInstruction::Add,
+                ProtoInstruction::Store(id.clone()),
+                ProtoInstruction::Load(id.clone()),
+            ]
+        },
+        UnaryOp::PreDec => {
+            let id = match &operand_insts[0] {
+                ProtoInstruction::Load(id) => id.clone(),
+                _ => return None,
+            };
+            vec![
+                ProtoInstruction::Val(ProtoValue::Num(1.0)),
+                ProtoInstruction::Sub,
+                ProtoInstruction::Store(id.clone()),
+                ProtoInstruction::Load(id.clone()),
+            ]
+        },
+        UnaryOp::PostInc => {
+            let id = match &operand_insts[0] {
+                ProtoInstruction::Load(id) => id.clone(),
+                _ => return None,
+            };
+            vec![
+                ProtoInstruction::Load(id.clone()),
+                ProtoInstruction::Val(ProtoValue::Num(1.0)),
+                ProtoInstruction::Add,
+                ProtoInstruction::Store(id.clone()),
+            ]
+        },
+        UnaryOp::PostDec => {
+            let id = match &operand_insts[0] {
+                ProtoInstruction::Load(id) => id.clone(),
+                _ => return None,
+            };
+            vec![
+                ProtoInstruction::Load(id.clone()),
+                ProtoInstruction::Val(ProtoValue::Num(1.0)),
+                ProtoInstruction::Sub,
+                ProtoInstruction::Store(id.clone()),
+            ]
+        },
     };
-    instructions.push(inst);
-    Some(instructions)
+    operand_insts.extend(insts);
+    Some(operand_insts)
 }
 
 /// Build the intructions needed to run WhileLoop
@@ -681,6 +741,54 @@ mod test {
             vec![
                 Val(Num(1.)),
                 Minus,
+            ],
+        );
+        // test pre increment operator
+        let ast = Ast::from_str("++a").unwrap();
+        assert_eq!(
+            Compiler::preprocess(&ast.root).unwrap(),
+            vec![
+                Load("a".into()),
+                Val(Num(1.)),
+                Add,
+                Store("a".into()),
+                Load("a".into()),
+            ],
+        );
+        // test pre decrement operator
+        let ast = Ast::from_str("--a").unwrap();
+        assert_eq!(
+            Compiler::preprocess(&ast.root).unwrap(),
+            vec![
+                Load("a".into()),
+                Val(Num(1.)),
+                Sub,
+                Store("a".into()),
+                Load("a".into()),
+            ],
+        );
+        // test post increment operator
+        let ast = Ast::from_str("a++").unwrap();
+        assert_eq!(
+            Compiler::preprocess(&ast.root).unwrap(),
+            vec![
+                Load("a".into()),
+                Load("a".into()),
+                Val(Num(1.)),
+                Add,
+                Store("a".into()),
+            ],
+        );
+        // test post decrement operator
+        let ast = Ast::from_str("a--").unwrap();
+        assert_eq!(
+            Compiler::preprocess(&ast.root).unwrap(),
+            vec![
+                Load("a".into()),
+                Load("a".into()),
+                Val(Num(1.)),
+                Sub,
+                Store("a".into()),
             ],
         );
     }

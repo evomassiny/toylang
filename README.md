@@ -24,6 +24,7 @@ The supported syntaxe is a small subset of the javascript one:
     * `+ - * / ** %`
     * `> < >= <= ==`
     * `! && ||`
+    * `++foo foo++ --foo foo--` 
 * separators:
     * `;` for expressions
     * `( )` for sub-expressions

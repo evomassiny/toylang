@@ -163,8 +163,6 @@ pub enum ProtoInstruction {
     DelLoopCtx,
     /// remove the last loop context
     PopToLoopCtx,
-    // Native function
-    // ... TODO
     // Binary Instructions
     // * Numerical
     Add,

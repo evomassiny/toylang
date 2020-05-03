@@ -586,6 +586,50 @@ mod tests {
     }
 
     #[test]
+    fn test_pre_increment() {
+        assert_eq!(
+            exec("let a = 1; ++a").unwrap(),
+            Some(Num(2.))
+        );
+        assert_eq!(
+            exec("let a = 1; ++a; a").unwrap(),
+            Some(Num(2.))
+        );
+    }
+    #[test]
+    fn test_pre_decrement() {
+        assert_eq!(
+            exec("let a = 1; --a").unwrap(),
+            Some(Num(0.))
+        );
+        assert_eq!(
+            exec("let a = 1; --a; a").unwrap(),
+            Some(Num(0.))
+        );
+    }
+    #[test]
+    fn test_post_increment() {
+        assert_eq!(
+            exec("let a = 1; a++").unwrap(),
+            Some(Num(1.))
+        );
+        assert_eq!(
+            exec("let a = 1; a++; a").unwrap(),
+            Some(Num(2.))
+        );
+    }
+    #[test]
+    fn test_post_decrement() {
+        assert_eq!(
+            exec("let a = 1; a--").unwrap(),
+            Some(Num(1.))
+        );
+        assert_eq!(
+            exec("let a = 1; a--; a").unwrap(),
+            Some(Num(0.))
+        );
+    }
+    #[test]
     fn test_if() {
         let val = exec(r#"
         function test(v) { 

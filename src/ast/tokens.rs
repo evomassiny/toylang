@@ -76,6 +76,10 @@ pub enum OperatorKind {
     Pow,
     /// `-`
     Sub,
+    /// `++`
+    Inc,
+    /// `--`
+    Dec,
 }
 /// Literals
 #[derive(PartialEq, Clone, Debug)]
