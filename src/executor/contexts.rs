@@ -1,4 +1,5 @@
-use std::collections::HashMap;
+use std::collections::{HashMap,HashSet};
+use std::iter::FromIterator;
 use crate::compiler::{GLOBAL_SCOPE_LABEL};
 use crate::builtins::{FnKind,NativeFn,Value,LexicalLabel,ContextID};
 
@@ -42,6 +43,10 @@ impl ValueStack {
     }
 }
 
+/// Tells the `Context` to run garbage collections
+/// every `CREATION_NB_UNTIL_GC` ExecutionCtx creations
+const CREATION_NB_UNTIL_GC: usize = 500;
+
 #[derive(Debug)]
 pub struct ExecutionCtx {
     /// The variable bindings of the current ExecutionCtx
@@ -73,23 +78,28 @@ impl ExecutionCtx {
 }
 
 
-/// A `Context` defines a set of stacks,
-/// reflecting the state of a Byte code interpreter based on stack machine.
-/// It is itself a stack of stacks.
+/// A `Context` defines the memory of a stack-based Byte code interpreter.
+/// 
+/// A context contains a store of simily-stackframe called `ExecutionCtx`,
+/// every function call create a new instance of `ExecutionCtx` which is stored
+/// into the `context_store`.
+/// Each `ExecutionCtx` hold the variables defined during a function call, 
+/// and the ContextId of the context that created it.
+/// One can follow those ID links to solve any variable bindings.
 ///
-/// A stack represents 2 things:
-/// * the references (bindings) and their associated values
-/// * a register stack (if that make sense...) which is just a storage
-/// for the temporary results of each expressions
+/// Note: Function Objects are binded to ContextID, 
+/// which allows one to solve a variable bindings related to their `ExecutionCtx.parent`.
 ///
-/// A `Context` allows an Executor to keep track of its memory
-/// during the instructions evalutation.
+/// The current context stack is stored into a Vec called `context_stack`,
+/// it helps managing context accross function calls.
 pub struct Context {
     pub context_store: HashMap<ContextID, ExecutionCtx>,
     // used to generate uniq ExecutionCtx labels
     context_counter: usize,
     /// store the execution context stack
     context_stack: Vec<ContextID>,
+    /// context created since garbage_collection
+    context_created_since_gc: usize,
 }
 
 impl Context {
@@ -98,26 +108,36 @@ impl Context {
     /// * the global execution context
     /// * an empty local stack
     pub fn new() -> Self {
-        let mut store = HashMap::new();
+        let mut store = HashMap::with_capacity(CREATION_NB_UNTIL_GC);
         store.insert(0, ExecutionCtx::new_global());
-        let ctx = Self { 
+        Self { 
             context_store: store,
             context_counter: 1,
             context_stack: vec![0,],
-        };
-        ctx
+            context_created_since_gc: 1,
+        }
     }
 
     /// Create a new execution context
     /// and gives it a uniq ContextID;
-    /// then push it to the stack,
-    /// and finally
+    /// then push it to the stack.
+    /// pop `self.context_stack` and use it as parent
+    /// NOTE: for function calls, the context binded to the function must be
+    /// push to `self.context_stack` before creating a new context
     pub fn new_context(&mut self, label: &LexicalLabel) {
+        // run GC if needed
+        self.context_created_since_gc += 1;
+        if self.context_created_since_gc == CREATION_NB_UNTIL_GC {
+            let _ = self.collect_garbage();
+            self.context_created_since_gc = 0;
+        };
+
+        // create the new context
         let ctx_id = self.context_counter;
         self.context_counter = self.context_counter + 1;
-
-        let parent_id = match self.context_stack.last() {
-            Some(parent_id) => Some(*parent_id),
+        // DIRTY pass the fonction declaration context in this stack
+        let parent_id = match self.context_stack.pop() { 
+            Some(parent_id) => Some(parent_id),
             None => None,
         };
         self.context_store.insert(
@@ -228,11 +248,13 @@ impl Context {
         Ok(())
     }
 
-    /// add a loop stack to the local context
+    /// add a loop stack to the current context
     pub fn add_loop_stack(&mut self) -> Result<(), ContextError> {
         let ctx_id = self.current_context()?;
         match self.context_store.get_mut(&ctx_id) {
-            Some(ctx) => ctx.stacks.push(ValueStack::new(StackKind::Loop)),
+            Some(ctx) => {
+                ctx.stacks.push(ValueStack::new(StackKind::Loop));
+            },
             None => return Err(context_error!("Cannot add loop stack: Context not in store.")),
         }
         Ok(())
@@ -308,6 +330,46 @@ impl Context {
         match ctx.stacks.last_mut() {
             Some(ref mut stack) => stack.values.clear(),
             None => return Err(context_error!("no stack to flush in current context"))
+        }
+        Ok(())
+    }
+
+    /// Crawl the Execution context stack to find unreferenced `ExecutionCtx`, then delete them
+    pub fn collect_garbage(&mut self) -> Result<(), ContextError> {
+        let mut to_crawl: Vec<ContextID> = self.context_stack.clone();
+        let mut whitelist: HashSet<ContextID> = HashSet::new();
+        let mut crawled: HashSet<ContextID> = HashSet::new();
+        while let Some(ctx_id) = to_crawl.pop() {
+            // keep the referenced Contexts
+            whitelist.insert(ctx_id.clone());
+            // fetch the context
+            let ctx = self.context_store.get(&ctx_id)
+                .ok_or(context_error!(format!("context ID {} is unreferenced", &ctx_id)))?;
+            // add the parent to the crawling queue
+            if let Some(parent_ctx_id) = ctx.parent {
+                if !crawled.contains(&parent_ctx_id) {
+                    to_crawl.push(parent_ctx_id);
+                }
+            }
+            // iter the Context bindings and crawl the context they're refering to
+            for value in ctx.bindings.values() {
+                match value {
+                    Value::Function(_kind, fn_ctx) => {
+                        if !crawled.contains(fn_ctx) {
+                            to_crawl.push(*fn_ctx);
+                        }
+                    },
+                    _ => continue,
+                }
+            }
+            // add the current context to the crawled set, so we don't crawl it twice
+            crawled.insert(ctx_id.clone());
+        }
+
+        // remove the unreferenced context
+        let all_contexts: HashSet<ContextID> = HashSet::from_iter(self.context_store.keys().cloned());
+        for ctx_id in all_contexts.difference(&whitelist) {
+            self.context_store.remove(&ctx_id);
         }
         Ok(())
     }

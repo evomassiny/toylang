@@ -877,5 +877,39 @@ mod tests {
             Some(Num(3.)),
         );
     }
+
+    #[test]
+    fn test_context_switch() {
+        // test context switching with several call to the same function
+        // within the same context
+        let src = r#"
+        function fib(n) {
+            if (n < 2) {
+                return n;
+            }
+            return fib(n - 1) + fib(n - 2);
+        }
+
+        let i = 0;
+        let result = undefined;
+        while (true) {
+            result = fib(i);
+
+            if (i++ == 5) {
+                break;
+            }
+        }
+        result
+        "#;
+        let ast = Ast::from_str(&src).expect("Could not build ast");
+        let instructions = Compiler::compile(&ast.root).expect("compiler error");
+        let mut executor = Executor::from_instructions(&instructions);
+
+        assert_eq!(
+            executor.execute().unwrap(),
+            Some(Num(5.)),
+        );
+
+    }
 }
 

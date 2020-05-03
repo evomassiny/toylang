@@ -6,10 +6,12 @@ function fib(n) {
 }
 
 let i = 0;
+let result = undefined;
 while (true) {
-    if (fib(i) > 10) {
+    result = fib(i);
+
+    if (++i >= 30) {
         break;
     }
-    i = i + 1;
 }
-i
+result
