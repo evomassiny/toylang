@@ -1,4 +1,5 @@
 use std::error::Error;
+use std::str::FromStr;
 use crate::ast::lexer::lex;
 use crate::ast::parser::{
     FlatExp,
@@ -270,18 +271,20 @@ impl Ast {
     /// build an Abstract Syntax Tree from a Token slice
     pub fn from_tokens(tokens : &[Token]) -> Result<Self, Box<dyn Error>> {
         let mut flat_exps = parse_flat_expressions(tokens)?;
-        Self::from_flat_expressions(&mut flat_exps).ok_or(
-            Box::new(
+        Self::from_flat_expressions(&mut flat_exps).ok_or(Box::new(
                 ParsingError::new("Failed to parse expression into an AST.".into())
             )
         )
     }
+}
     
+impl FromStr for Ast {
+    type Err = Box<dyn Error>;
+
     /// lex, parse source code into an Abstract Syntax Tree
-    pub fn from_str(src: &str) -> Result<Self, Box<dyn Error>> {
+    fn from_str(src: &str) -> Result<Self, Self::Err> {
         let tokens = lex(src)?;
         Self::from_tokens(&tokens)
     }
-
 }
 

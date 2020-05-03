@@ -165,11 +165,11 @@ pub fn parse_flat_expressions(tokens: &[Token]) -> Result<Vec<FlatExp>, ParsingE
     // in this vector, a None item represent a parsed Token
     let mut unparsed_tokens: Vec<Option<&Token>> = tokens.iter()
         .filter(|t|  // weed out comments
-            match t { 
-                &Token { kind: TokenKind::Comment(_), .. } => false,
+            match *t { 
+                Token { kind: TokenKind::Comment(_), .. } => false,
                 _ => true,
             })
-        .map(|t| Some(t)) // as Option<&Token>
+        .map(Some) // as Option<&Token>
         .collect();
     let mut idx: usize = 0;
     while idx < unparsed_tokens.len() {

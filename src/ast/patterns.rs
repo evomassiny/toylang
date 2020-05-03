@@ -270,7 +270,7 @@ pub fn match_unary_op(tokens: &[Option<&Token>]) -> Option<(FlatExp, Vec<usize>)
 /// * `null`
 /// * `undefined`
 pub fn match_const(tokens: &[Option<&Token>]) -> Option<(FlatExp, Vec<usize>)> {
-    if tokens.len() < 1 { return None; }
+    if tokens.is_empty() { return None; }
     match tokens[0] {
         Some(Token { kind: Literal(literal), ..} ) => {
             match literal {
@@ -295,7 +295,7 @@ pub fn match_const(tokens: &[Option<&Token>]) -> Option<(FlatExp, Vec<usize>)> {
 /// * `break`
 /// * `continue`
 pub fn match_jumpers(tokens: &[Option<&Token>]) -> Option<(FlatExp, Vec<usize>)> {
-    if tokens.len() < 1 { return None; }
+    if tokens.is_empty() { return None; }
     match tokens[0] {
         Some(Token { kind: Keyword(keyword), ..} ) => {
             match keyword {
@@ -311,7 +311,7 @@ pub fn match_jumpers(tokens: &[Option<&Token>]) -> Option<(FlatExp, Vec<usize>)>
 
 /// Match a local label, eg: a variable name from the first item of `tokens':
 pub fn match_local(tokens: &[Option<&Token>]) -> Option<(FlatExp, Vec<usize>)> {
-    if tokens.len() < 1 { return None; }
+    if tokens.is_empty() { return None; }
     if let Some(Token { kind: Identifier(ref id), ..} ) = tokens[0] {
         return Some((FlatLocal(id.into()), vec![0]));
     }
@@ -565,7 +565,7 @@ pub fn match_function_declaration(tokens: &[Option<&Token>]) -> Option<(FlatExp,
 /// * `return`
 /// * `return expression`
 pub fn match_return(tokens: &[Option<&Token>]) -> Option<(FlatExp, Vec<usize>)> {
-    if tokens.len() < 1 { return None; }
+    if tokens.is_empty() { return None; }
     if let Some(&Token { kind: Keyword(Return), ..}) = tokens[0] {
         let sub_expr_count = if tokens.len() > 1 && !tokens[1].is_none() { 1 } else { 0 };
         return Some((FlatReturn(sub_expr_count), vec![0]));

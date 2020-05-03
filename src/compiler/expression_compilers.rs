@@ -478,6 +478,7 @@ pub fn compile_binary_op(op: &BinaryOp, sub_instructions: Vec<Vec<ProtoInstructi
     
 #[cfg(test)]
 mod test {
+    use std::str::FromStr;
     use crate::ast::Ast;
     use crate::compiler::compiler::Compiler;
     use crate::compiler::proto_instructions::{ProtoValue,ProtoInstruction,Addr,AddrKind};

@@ -6,7 +6,7 @@ use crate::compiler::instructions::Instruction;
 use crate::builtins::{Value,FnKind};
 
 /// the name of the global execution context
-pub const GLOBAL_SCOPE_LABEL: &'static str = "global";
+pub const GLOBAL_SCOPE_LABEL: &str = "global";
 
 /// The string used to separate the labels
 /// for instance a function "foo" defined in the global scope

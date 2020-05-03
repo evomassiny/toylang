@@ -7,6 +7,7 @@ extern crate lazy_static;
 use std::fs::File;
 use std::io::prelude::*;
 use std::env::args;
+use std::str::FromStr;
 
 /// Contains the methods that turns javascript source into an
 /// Abstract Syntaxe Tree
