@@ -175,7 +175,6 @@ impl Compiler {
                         sub_instructions, 
                         name, args,
                         &mut labels, 
-                        ast_node.scope_label(),
                     )?
                 },
                 BinaryOp(op, ..) => 
@@ -259,7 +258,6 @@ impl Compiler {
                     instructions.push(GotoIf(*offset));
                 },
                 ProtoInstruction::AddrLabel(..) => {},
-                ProtoInstruction::NewContext(ctx) => instructions.push(NewContext(ctx)),
                 ProtoInstruction::NewRef(s) => instructions.push(NewRef(s)),
                 ProtoInstruction::NewFunction(label) => {
                     let offset = label_to_offset.get(&label)?;

@@ -1,7 +1,6 @@
 use std::collections::{HashMap,HashSet};
 use std::iter::FromIterator;
-use crate::compiler::{GLOBAL_SCOPE_LABEL};
-use crate::builtins::{FnKind,NativeFn,Value,LexicalLabel,ContextID};
+use crate::builtins::{FnKind,NativeFn,Value,ContextID};
 
 
 #[derive(Debug)]
@@ -51,9 +50,6 @@ const CREATION_NB_UNTIL_GC: usize = 500;
 pub struct ExecutionCtx {
     /// The variable bindings of the current ExecutionCtx
     bindings: HashMap<String, Value>,
-    /// a label identifiying the lexical stack of `self`,
-    /// only used for debugging purpose
-    label: LexicalLabel,
     /// this ContextID of the parent context, or None if `self` is the global context
     parent: Option<ContextID>,
     /// the ID of `self`, act as a Key in the Context.store
@@ -70,7 +66,6 @@ impl ExecutionCtx {
         Self {
             stacks: vec![ValueStack::new(StackKind::Block)], 
             bindings: HashMap::new(),
-            label: GLOBAL_SCOPE_LABEL.into(),
             parent: None,
             this: 0,
         }
@@ -121,36 +116,30 @@ impl Context {
     /// Create a new execution context
     /// and gives it a uniq ContextID;
     /// then push it to the stack.
-    /// pop `self.context_stack` and use it as parent
-    /// NOTE: for function calls, the context binded to the function must be
-    /// push to `self.context_stack` before creating a new context
-    pub fn new_context(&mut self, label: &LexicalLabel) {
+    /// Bind it to `parent_ctx_id`.
+    ///
+    /// Returns the context ID created.
+    pub fn add_binded_context(&mut self, parent_ctx_id: ContextID) -> ContextID {
         // run GC if needed
         self.context_created_since_gc += 1;
         if self.context_created_since_gc == CREATION_NB_UNTIL_GC {
             let _ = self.collect_garbage();
             self.context_created_since_gc = 0;
         };
-
         // create the new context
         let ctx_id = self.context_counter;
         self.context_counter = self.context_counter + 1;
-        // DIRTY pass the fonction declaration context in this stack
-        let parent_id = match self.context_stack.pop() { 
-            Some(parent_id) => Some(parent_id),
-            None => None,
-        };
         self.context_store.insert(
             ctx_id,
             ExecutionCtx {
                 bindings: HashMap::new(),
-                parent: parent_id,
-                label: label.clone(),
+                parent: Some(parent_ctx_id),
                 this: ctx_id,
                 stacks: vec![ValueStack::new(StackKind::Block)], 
             }
         );
         self.context_stack.push(ctx_id);
+        return ctx_id;
     }
 
     /// Add a native function to the global context
@@ -218,11 +207,6 @@ impl Context {
             } 
         }
         Err(context_error!(format!("load error: Unknown reference {} (in {})", name, ctx)))
-    }
-
-    /// Change context (for instance in function call)
-    pub fn push_context(&mut self, ctx_id: ContextID) {
-        self.context_stack.push(ctx_id);
     }
 
     /// Change context (for instance after function call)
@@ -334,7 +318,8 @@ impl Context {
         Ok(())
     }
 
-    /// Crawl the Execution context stack to find unreferenced `ExecutionCtx`, then delete them
+    /// Run tracing garbage collections:
+    /// Crawl the Execution context stack to find unreferenced `ExecutionCtx`, then delete them.
     pub fn collect_garbage(&mut self) -> Result<(), ContextError> {
         let mut to_crawl: Vec<ContextID> = self.context_stack.clone();
         let mut whitelist: HashSet<ContextID> = HashSet::new();
@@ -374,4 +359,34 @@ impl Context {
         Ok(())
     }
 
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::executor::{Context,ExecutionCtx};
+    use crate::builtins::{Value,FnKind,ContextID};
+    use Value::*;
+
+    #[test]
+    fn test_garbage_collections() {
+        let mut ctx = Context::new();
+        let global_ctx: ContextID = *ctx.context_stack.last().unwrap();
+        // create a child context
+        let child = ctx.add_binded_context(global_ctx);
+        ctx.pop_context();
+        // and reference it in the global context
+        let _ = ctx.create_ref("covfefe");
+        let _ = ctx.store("covfefe", Value::Function(FnKind::Address(1), child));
+        // create 2 unreferenced contexts
+        let unref_ctx = ctx.add_binded_context(child);
+        ctx.pop_context();
+        let unref_but_running = ctx.add_binded_context(global_ctx);
+        // run the GC
+        let _ = ctx.collect_garbage();
+        // `global_ctx` and `child` only should be kept
+        assert_eq!(ctx.context_store.contains_key(&global_ctx), true, "Global scope was removed");
+        assert_eq!(ctx.context_store.contains_key(&child), true, "referenced scope was removed");
+        assert_eq!(ctx.context_store.contains_key(&unref_ctx), false, "unreferenced scope was not removed");
+        assert_eq!(ctx.context_store.contains_key(&unref_but_running), true, "active/runnnig scope was removed");
+    }
 }

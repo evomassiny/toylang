@@ -2,7 +2,6 @@ use crate::compiler::Instruction;
 use crate::builtins::{
     FnKind,
     Value,
-    LexicalLabel,
 };
 use crate::executor::contexts::{
     Context,
@@ -74,9 +73,6 @@ impl <'inst> Executor <'inst> {
         self.context.store(name, val).map_err(Into::into)
     }
     
-    pub fn new_context(&mut self, label: &LexicalLabel) {
-        self.context.new_context(label);
-    }
     /// create a reference
     fn create_ref(&mut self, name: &str) -> Result<(), ExecutionError> {
         self.context.create_ref(name).map_err(Into::into)
@@ -145,14 +141,6 @@ impl <'inst> Executor <'inst> {
                     return Ok(ExecStatus::Running);
                 } 
             },
-            // Refs to Values
-            NewContext(ref ctx) => {
-                self.new_context(ctx);
-                // pass in arguments
-                while let Some(value) = self.passthrough.pop() {
-                    self.push_value(value)?;
-                }
-            },
             NewFunction(ref fn_kind) => {
                 // load the current idx
                 let ctx_id = self.context.current_context()?;
@@ -177,14 +165,18 @@ impl <'inst> Executor <'inst> {
                         // go to the function body
                         self.execution_pointers.push(addr);
                         // change execution context
-                        self.context.push_context(ctx_id);
+                        self.context.add_binded_context(ctx_id);
+                        // pass in arguments
+                        while let Some(value) = self.passthrough.pop() {
+                            self.push_value(value)?;
+                        }
                         return Ok(ExecStatus::Running);
                     },
                     Value::Function(FnKind::Native(func), ctx_id) => {
-                        let mut args = Vec::new();
                         // change execution context
-                        self.context.push_context(ctx_id);
+                        self.context.add_binded_context(ctx_id);
                         // pass in arguments
+                        let mut args = Vec::new();
                         while let Some(value) = self.passthrough.pop() {
                             args.push(value);
                         }
@@ -347,15 +339,14 @@ impl <'inst> Executor <'inst> {
         }
         // perform the call
         match self.load(name) {
-            Value::Function(FnKind::Address(addr), ctx) => {
-                // change context
-                self.context.push_context(ctx);
+            Value::Function(FnKind::Address(addr), ctx_id) => {
                 // go to the function body
                 self.execution_pointers.push(addr);
+                // change execution context
+                self.context.add_binded_context(ctx_id);
                 // pass in arguments
-                for arg in args {
-                    self.passthrough.push(arg);
-                    //self.push_value(arg);
+                while let Some(arg) = args.pop() {
+                    let _ = self.push_value(arg);
                 }
                 return self.execute();
             },
@@ -790,6 +781,7 @@ mod tests {
             Some(Num(24.))
         );
     }
+
     #[test]
     fn test_script_function_call() {
         let src = r#"
@@ -829,6 +821,7 @@ mod tests {
             Some(Num(24.))
         );
     }
+
     #[test]
     fn test_closure() {
         let src = r#"

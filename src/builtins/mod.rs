@@ -5,5 +5,4 @@ pub use values::{
     FnKind,
     NativeFn,
     ContextID,
-    LexicalLabel,
 };

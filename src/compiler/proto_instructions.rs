@@ -5,7 +5,6 @@ use crate::ast::{
     Const,
 };
 use crate::builtins::{
-    LexicalLabel,
     ContextID,
 };
 
@@ -137,9 +136,6 @@ pub enum ProtoInstruction {
     /// pop the stack and store the value into the variable pointed by `String`
     /// if the stack is empty, store `Value::Undefined`
     Store(String), 
-    /// Creates a new context, the first label is the new context, 
-    /// the second one is its parent (wrapped in an option, to handle the root context)
-    NewContext(LexicalLabel), 
     /// Create a value and push it onto the stack
     Val(ProtoValue),
     /// Call a function

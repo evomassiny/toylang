@@ -1,6 +1,3 @@
-use crate::builtins::{
-    LexicalLabel,
-};
 use crate::compiler::proto_instructions::{
     ProtoValue,
     ProtoInstruction,
@@ -174,7 +171,6 @@ pub fn compile_call(mut sub_instructions: Vec<Vec<ProtoInstruction>>) -> Option<
 /// So `function id(a, b) { <expr> }` is compiled as:
 ///     Goto(end)               // skip the function block if were not calling it
 ///     AddrLabel(start)        // address of the function
-///     NewContext(ctx)         // creates a new context 
 ///     NewRef 'a'              // args
 ///     Store 'a'
 ///     NewRef 'b'
@@ -194,7 +190,6 @@ pub fn compile_function_decl(
     name: &str,
     args: &Vec<String>,
     labels: &mut LabelGenerator,
-    ctx: LexicalLabel,
     ) -> Option<Vec<ProtoInstruction>> {
     let mut instructions = Vec::new();
     // set the address of the function start and end
@@ -204,8 +199,6 @@ pub fn compile_function_decl(
     instructions.push(Goto(end.addr));
     // set the `start` label here
     instructions.push(AddrLabel(start)); 
-    // Build a new Context
-    instructions.push(NewContext(ctx.clone())); 
     
     // load args
     for arg in args {
@@ -618,7 +611,6 @@ mod test {
             vec![
                 Goto(1),  // skip function block if we're not calling it
                 AddrLabel(Addr { addr: 0, kind: AddrKind::BeginFunction } ), // begin address
-                NewContext("global__foo_0".into()),
                 NewRef("a".into()), // first arg 
                 Store("a".into()),
                 NewRef("b".into()), // 2nd arg
@@ -639,7 +631,6 @@ mod test {
             vec![
                 Goto(1),  // skip function block if we're not calling it
                 AddrLabel(Addr { addr: 0, kind: AddrKind::BeginFunction } ), // begin address
-                NewContext("global__foo_0".into()),
                 NewRef("a".into()), // first arg 
                 Store("a".into()),
                 NewRef("b".into()), // 2nd arg

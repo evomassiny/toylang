@@ -16,9 +16,6 @@ pub type NativeFn = fn(&mut Vec<Value>) -> Value;
 /// The ID of a given context
 pub type ContextID = usize;
 
-/// The ID of a given lexical context
-pub type LexicalLabel = String;
-
 /// Describes the 2 kinds of Functions:
 /// * Address => a location in the byte code
 /// * Native => a rust function
