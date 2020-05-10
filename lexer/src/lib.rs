@@ -1,4 +1,5 @@
 pub mod rule_lexer;
+pub mod rule_parser;
 
 #[cfg(test)]
 mod tests {

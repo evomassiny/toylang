@@ -162,7 +162,7 @@ pub enum FlatExp {
 /// of an Abstract Syntax Tree, in Polish Notation
 pub fn parse_flat_expressions(tokens: &[Token]) -> Result<Vec<FlatExp>, ParsingError> {
     let mut exprs: Vec<FlatExp> = Vec::new();
-    // in this vector, a None item represent a parsed Token
+    // in this vector, a None item represents a parsed Token
     let mut unparsed_tokens: Vec<Option<&Token>> = tokens.iter()
         .filter(|t|  // weed out comments
             match *t { 

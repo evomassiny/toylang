@@ -1,16 +1,5 @@
 use std::error::Error;
-use std::iter::Peekable;
-use std::str::FromStr;
 use std::fmt;
-
-// what we want to match
-// r"^(?P<token>function|if|let|else|return|while|undefined|null|break|continue|var)(\W|$)"
-// r"^(?P<token>\d+(\.\d*)?|\d+\.?|\.\d+)(\W|$)"
-// r"^(?P<token>\}|\)|\{|\(|;|,)"
-// r"^(?P<token>==|>=|<=|!=|\*\*|\|\||&&|\+\+|\-\-|\+|=|/|>|<|%|\*|!|\-)"
-// r#"^"(?P<token>(\\"|.)*?)""#
-// r"(?m)^//(?P<token>.+?)$"
-// r"^(?P<token>[[:alpha:]]\w*)"
 
 #[derive(Debug,PartialEq,Eq)]
 pub struct LexError(usize, String);
@@ -19,6 +8,7 @@ impl fmt::Display for LexError {
         write!(f, "Lexing error at char {}: {}.", self.0, self.1)
     }
 }
+impl Error for LexError {}
 
 #[derive(Debug,PartialEq,Eq)]
 pub enum RuleToken {
@@ -31,9 +21,9 @@ pub enum RuleToken {
     OpenParen,          // (
     CloseParen,         // )
     // quantifiers
-    ZeroOrMore,         // *
-    OneOrMore,          // +
-    ZeroOrOne,          // *
+    Any,                // *
+    AtLeastOnce,        // +
+    Optional,           // ?
     // char classes: TODO
     // Characters
     Literal(char),      // any char
@@ -56,9 +46,9 @@ fn from_str(src: &str) -> Result<Vec<RuleToken>,LexError> {
             '(' => RuleToken::OpenParen,
             ')' => RuleToken::CloseParen,
             // quantifiers
-            '*' => RuleToken::ZeroOrMore,
-            '+' => RuleToken::OneOrMore,
-            '?' => RuleToken::ZeroOrOne,
+            '*' => RuleToken::Any,
+            '+' => RuleToken::AtLeastOnce,
+            '?' => RuleToken::Optional,
             // characters
             '\\' => {
                 // handle escaped chars
@@ -124,15 +114,15 @@ fn lex_groupers() {
 fn lex_quantifiers() {
     assert_eq!(
         from_str("*"),
-        Ok(vec![RuleToken::ZeroOrMore]),
+        Ok(vec![RuleToken::Any]),
     );
     assert_eq!(
         from_str("+"),
-        Ok(vec![RuleToken::OneOrMore]),
+        Ok(vec![RuleToken::AtLeastOnce]),
     );
     assert_eq!(
         from_str("?"),
-        Ok(vec![RuleToken::ZeroOrOne]),
+        Ok(vec![RuleToken::Optional]),
     );
 }
 
@@ -172,7 +162,7 @@ fn lex_mixed() {
             RuleToken::Start,
             RuleToken::Literal('a'),
             RuleToken::Literal('b'),
-            RuleToken::ZeroOrOne,
+            RuleToken::Optional,
             RuleToken::OpenParen,
             RuleToken::Literal('a'),
             RuleToken::Or,
