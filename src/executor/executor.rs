@@ -105,7 +105,7 @@ impl <'inst> Executor <'inst> {
         }
     }
 
-    /// Return current the execution pointer
+    /// Return the current execution pointer
     fn instruction_pointer(&mut self) -> Result<usize, ExecutionError> {
         let ip: &usize = self.execution_pointers
             .last()
