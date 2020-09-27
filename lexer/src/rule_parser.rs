@@ -1,7 +1,10 @@
 use std::error::Error;
 //use std::str::FromStr;
 use std::fmt;
-use crate::rule_lexer::RuleToken;
+use crate::rule_lexer::{
+    RuleToken,
+    LexError,
+};
 
 
 #[derive(Debug,PartialEq,Eq)]
@@ -314,6 +317,14 @@ impl RuleAst {
         }
         Ok(RuleAst { rules: expressions.pop().ok_or(ParseError("expressions list is empty".into()))?})
     }
+
+    /// Build a `RuleAst` from a rule/pattern string
+    pub fn from_str(rule_str: &str) -> Result<Self, ParseError> {
+        let tokens: Vec<RuleToken> = RuleToken::from_str(rule_str)
+            .map_err(|_| ParseError("Failed to lex the input str".into()))?;
+        let rules = parse_flat_rules(&tokens)?;
+        RuleAst::from_flat_rule_expressions(rules)
+    }
 }
 
 #[test]
@@ -425,6 +436,55 @@ fn ast_from_flat_expressions() {
     use TargetKind::*;
     assert_eq!(
         RuleAst::from_flat_rule_expressions(flat_exprs),
+        Ok( 
+            RuleAst {
+                rules: Sequence(
+                    vec![
+                        Target(Literal('c')), 
+                        Any(Box::new(
+                            Variants(vec![
+                                Sequence(
+                                    vec![
+                                        Target(Literal('a')), 
+                                        Target(Literal('a'))
+                                    ]
+                                ),
+                                Target(Literal('b')),
+                            ])
+                        )),
+                    ]
+                )
+            }
+        )
+    );
+}
+
+#[test]
+fn ast_from_str() {
+    // a|bc
+    use RuleExp::*;
+    use TargetKind::*;
+    assert_eq!(
+        RuleAst::from_str("a|bc"),
+        Ok( 
+            RuleAst {
+                rules: Variants(
+                           vec![
+                                Target(Literal('a')),
+                                Sequence(
+                                    vec![
+                                        Target(Literal('b')), 
+                                        Target(Literal('c'))
+                                    ]
+                                ),
+                            ]
+                        )
+            }
+        )
+    );
+    // c(aa|b)*
+    assert_eq!(
+        RuleAst::from_str("c(aa|b)*"),
         Ok( 
             RuleAst {
                 rules: Sequence(

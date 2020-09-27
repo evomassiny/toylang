@@ -1,5 +1,6 @@
 pub mod rule_lexer;
 pub mod rule_parser;
+pub mod nfa;
 
 #[cfg(test)]
 mod tests {

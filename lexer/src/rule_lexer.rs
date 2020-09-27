@@ -55,7 +55,7 @@ fn from_str(src: &str) -> Result<Vec<RuleToken>,LexError> {
                 let token = match chars.peek() {
                     Some((_, next_c)) => {
                         match *next_c {
-                            // escape secial chars
+                            // escape special chars
                             '^' | '$' | '|' | '(' | ')' | '*' | '+' | '?' | '\\' => RuleToken::Literal(*next_c),
                             // nothing to escape, fails
                             _ => return Err(LexError(idx, format!("cannot escape {}", next_c))),
@@ -72,6 +72,14 @@ fn from_str(src: &str) -> Result<Vec<RuleToken>,LexError> {
         tokens.push(token);
     }
     Ok(tokens)
+}
+
+impl RuleToken {
+
+    /// lex a rule (eg: a pattern sting) into `RuleToken`s
+    pub fn from_str(src: &str) -> Result<Vec<Self>,LexError> {
+        from_str(src)
+    }
 }
 
 #[test]
