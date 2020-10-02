@@ -5,13 +5,31 @@ use std::fmt;
 use crate::rule_lexer::RuleToken;
 use crate::rule_parser::{
     TargetKind,
-    RuleExp,
-    RuleAst,
+    FlatRuleExp,
+    FlatAst,
     ParseError,
 };
 
 type StateID = usize;
 
+/// This struct's only job is to generates uniq 
+/// StateID (basically IDs)
+#[derive(Debug,Clone,PartialEq)]
+pub struct IDGenerator {
+    state_id: StateID,
+}
+
+impl IDGenerator {
+    pub fn new() -> Self {
+        Self { state_id: 0 }
+    }
+
+    pub fn new_id(&mut self) -> StateID {
+        let state_id = self.state_id;
+        self.state_id += 1;
+        state_id
+    }
+}
 
 /// Represents a transition between 2 states in an Non-Finite Automata
 pub struct Transition {
@@ -48,42 +66,68 @@ pub struct NFA {
     start: StateID,
 }
 
+
 impl NFA {
 
-    fn from_rule_ast(ast: &RuleAst) -> Result<Self, ParseError> {
-        use RuleExp::*;
+    fn from_flat_ast(ast: &[FlatRuleExp]) -> Result<Self, ParseError> {
+        use FlatRuleExp::*;
         use StateKind::*;
+
+        // produces uniq states labels
+        let mut id_generator = IDGenerator::new();
 
         // outputs
         let mut states: Vec<State> = vec![
-            State { id: 0, kind: Start },
+            State { id: id_generator.new_id(), kind: Start },
         ];
         let mut transitions: Vec<Vec<Transition>> = vec![vec![]];
 
-        // helps keeping track of the AST traversal
-        let mut current_rules: Vec<Vec<&RuleExp>> = vec![vec![&ast.rules]];
-        let mut current_rule_ids: Vec<usize> = vec![0];
+        // main work queue 
+        let mut ids_to_process: Vec<Vec<usize>> = vec![(0..ast.len()).rev().collect()];
+        // either or not we stop the processing of an expression 
+        // to process its the expression children
+        let mut in_process: Vec<bool> = ast.iter().map(|_| false).collect();
 
-        // updated at each step of the AST traversal
-        let mut rule: &RuleExp;
-        let mut depth_idx: usize;
-        let mut rule_idx_in_level: usize;
+        'ast_traversal: while !ids_to_process.is_empty() {
+            // solve the deepest level first
+            let mut depth_idx = ids_to_process.len() - 1;
+            'level_traversal: while let Some(idx) = ids_to_process[depth_idx].pop() {
+                let node: &FlatRuleExp = &ast[idx];
+                if let Some(indices) = ast.sub_exp_indices(idx) {
+                    ids_to_process.push(indices);
+                    // set the current node as "in process"
+                    in_process[idx] = true;
+                    continue 'ast_traversal;
+                }
 
-        // traverse the AST
-        while current_rules.len() > 0 {
+                // process the node
+                let end_state_id = id_generator.new_id();
+                let end_state = State { 
+                    id: end_state_id,
+                    kind: NonFinal,
+                };
+                let mut state_transitions = Vec::new();
+                match node {
+                    FlatTarget(ref kind) => { 
+                        let transition = Transition { 
+                            condition: Some(*kind),
+                            target: end_state_id,
+                        };
+                        state_transitions.push(transition);
+                    },
+                    FlatOnce => { ; },
+                    FlatAtLeastOnce => { ; },
+                    FlatAny => { ; },
+                    FlatOptional => { ; },
+                    FlatVariants(n) => { ; },
+                    FlatSequence(n) => { ; },
+                }
+                states.push(end_state);
+                transitions.push(state_transitions);
+                if ids_to_process[depth_idx].is_empty() {
+                    let _ = ids_to_process.pop();
+                }
 
-            depth_idx = current_rules.len() - 1;
-            rule_idx_in_level = current_rule_ids[depth_idx];
-            rule = current_rules[depth_idx][rule_idx_in_level];
-
-            match *rule {
-                Once(ref exp) => { ; },
-                AtLeastOnce(ref exp) => { ; },
-                Any(ref exp) => { ; },
-                Optional(ref exp) => { ; },
-                Variants(ref exps) => { ; },
-                Target(ref kind) => { ; },
-                Sequence(ref exps) => { ; },
             }
         }
 

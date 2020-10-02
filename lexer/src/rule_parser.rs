@@ -16,7 +16,7 @@ impl fmt::Display for ParseError {
 }
 impl Error for ParseError {}
 
-#[derive(Debug,PartialEq,Eq)]
+#[derive(Debug,PartialEq,Eq,Clone,Copy)]
 pub enum TargetKind {
     // targets
     Start,
@@ -41,6 +41,93 @@ pub enum FlatRuleExp {
     FlatSequence(usize),
     /// consumes 0 expressions, delimits expressions
     FlatFence,
+}
+
+impl FlatRuleExp {
+
+    /// return the number of sub expressions
+    /// that a rule is made of.
+    pub fn sub_expression_count(&self) -> usize {
+        match *self {
+            Self::FlatAtLeastOnce => 1,
+            Self::FlatAny => 1,
+            Self::FlatOptional => 1,
+            Self::FlatVariants(n) => n,
+            Self::FlatTarget(_) => 1,
+            Self::FlatSequence(n) => n,
+            Self::FlatFence => 0,
+        }
+    }
+}
+
+pub trait FlatAst {
+
+    /// Returns all the children node indices and the children of self[n]
+    fn sub_exp_indices(&self, n: usize) -> Option<Vec<usize>>;
+    /// Returns the next node index in the same level as self[n]
+    fn next_exp_in_level(&self, n: usize) -> Option<usize>;
+    /// Returns all the direct children indices of self[n]
+    fn children_indices(&self, n: usize) -> Option<Vec<usize>>;
+}
+
+impl FlatAst for [FlatRuleExp] {
+
+    fn sub_exp_indices(&self, n: usize) -> Option<Vec<usize>> {
+        if n > self.len() {
+            return None;
+        }
+        let mut idx = n;
+        let mut count = self[n].sub_expression_count();
+        let mut indices = Vec::new();
+        while count > 0 {
+            count += self[idx].sub_expression_count();
+            count -= 1;
+            idx += 1;
+            if idx < self.len() {
+                return None;
+            }
+            indices.push(idx);
+        }
+        Some(indices)
+
+    }
+
+    fn next_exp_in_level(&self, n: usize) -> Option<usize> {
+        if n > self.len() {
+            return None;
+        }
+        let mut idx = n;
+        let mut count = self[n].sub_expression_count();
+        while count > 0 {
+            count += self[idx].sub_expression_count();
+            count -= 1;
+            idx += 1;
+            if idx < self.len() {
+                return None;
+            }
+        }
+        Some(idx)
+    }
+
+    fn children_indices(&self, n: usize) -> Option<Vec<usize>> {
+        if n > self.len() {
+            return None;
+        }
+        match self[n].sub_expression_count() {
+            0 => return None,
+            children_count => {
+                // the child expression must be the next expression
+                let mut child_idx = n + 1;
+                let mut children_ids: Vec<usize> = vec![child_idx];
+
+                while let Some(idx) = self.next_exp_in_level(child_idx) {
+                    child_idx = idx;
+                    children_ids.push(idx);
+                }
+                return Some(children_ids);
+            }
+        }
+    }
 }
 
 /// match a quantifier (*, +, ?). must be parsed before its sub-expression
