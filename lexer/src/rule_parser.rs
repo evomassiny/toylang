@@ -26,87 +26,95 @@ pub enum TargetKind {
 
 /// A flat representation of an Abstract syntax Tree
 #[derive(Debug,PartialEq,Eq)]
-pub enum FlatRuleExp {
+pub enum RuleExp {
     /// consumes 1 expressions
-    FlatAtLeastOnce,
+    AtLeastOnce,
     /// consumes 1 expressions
-    FlatAny,
+    Any,
     /// consumes 1 expressions
-    FlatOptional,
+    Optional,
     /// consumes `n` expressions, on per variant
-    FlatVariants(usize),
+    Variants(usize),
     /// consumes 1 expressions
-    FlatTarget(TargetKind),
+    Target(TargetKind),
     /// consumes `n` expressions
-    FlatSequence(usize),
+    Sequence(usize),
     /// consumes 0 expressions, delimits expressions
-    FlatFence,
+    Fence,
 }
 
-impl FlatRuleExp {
+impl RuleExp {
 
     /// return the number of sub expressions
     /// that a rule is made of.
     pub fn sub_expression_count(&self) -> usize {
         match *self {
-            Self::FlatAtLeastOnce => 1,
-            Self::FlatAny => 1,
-            Self::FlatOptional => 1,
-            Self::FlatVariants(n) => n,
-            Self::FlatTarget(_) => 1,
-            Self::FlatSequence(n) => n,
-            Self::FlatFence => 0,
+            Self::AtLeastOnce => 1,
+            Self::Any => 1,
+            Self::Optional => 1,
+            Self::Variants(n) => n,
+            Self::Sequence(n) => n,
+            Self::Fence => 0,
+            Self::Target(_) => 0,
         }
     }
 }
 
-pub trait FlatAst {
+pub trait RuleAst {
 
+    /// Returns the index of the last node of the sub-expressions
+    /// composing `self[n]` plus one
+    fn expression_bound(&self, n: usize) -> Option<usize>;
     /// Returns all the children node indices and the children of self[n]
     fn sub_exp_indices(&self, n: usize) -> Option<Vec<usize>>;
-    /// Returns the next node index in the same level as self[n]
-    fn next_exp_in_level(&self, n: usize) -> Option<usize>;
+    /// Returns the index of the parent node
+    fn parent_index(&self, n: usize) -> Option<usize>;
     /// Returns all the direct children indices of self[n]
     fn children_indices(&self, n: usize) -> Option<Vec<usize>>;
 }
 
-impl FlatAst for [FlatRuleExp] {
+impl RuleAst for [RuleExp] {
 
-    fn sub_exp_indices(&self, n: usize) -> Option<Vec<usize>> {
-        if n > self.len() {
+    fn expression_bound(&self, n: usize) -> Option<usize> {
+        if n >= self.len() {
             return None;
         }
         let mut idx = n;
         let mut count = self[n].sub_expression_count();
-        let mut indices = Vec::new();
         while count > 0 {
-            count += self[idx].sub_expression_count();
-            count -= 1;
             idx += 1;
-            if idx < self.len() {
+            if idx >= self.len() {
                 return None;
             }
-            indices.push(idx);
+            count = count - 1 + self[idx].sub_expression_count();
         }
-        Some(indices)
-
+        Some(idx + 1)
     }
 
-    fn next_exp_in_level(&self, n: usize) -> Option<usize> {
-        if n > self.len() {
+    fn sub_exp_indices(&self, n: usize) -> Option<Vec<usize>> {
+        let last_idx: usize = self.expression_bound(n)?;
+        Some(((n + 1)..last_idx).collect())
+    }
+
+    fn parent_index(&self, n: usize) -> Option<usize> {
+        if n >= self.len() || n == 0 {
             return None;
         }
-        let mut idx = n;
-        let mut count = self[n].sub_expression_count();
-        while count > 0 {
-            count += self[idx].sub_expression_count();
-            count -= 1;
-            idx += 1;
-            if idx < self.len() {
-                return None;
+        let mut cursor = n - 1;
+        while cursor >= 0 {
+            match self[cursor].sub_expression_count() {
+                0 => {},
+                _ => {
+                    match self.expression_bound(cursor) {
+                        None => {},
+                        Some(idx) if idx < cursor => {},
+                        Some(_) => return Some(cursor),
+                    }
+                }
             }
+            cursor -= 1;
         }
-        Some(idx)
+        None
     }
 
     fn children_indices(&self, n: usize) -> Option<Vec<usize>> {
@@ -119,8 +127,12 @@ impl FlatAst for [FlatRuleExp] {
                 // the child expression must be the next expression
                 let mut child_idx = n + 1;
                 let mut children_ids: Vec<usize> = vec![child_idx];
+                let bound = self.expression_bound(n)?;
 
-                while let Some(idx) = self.next_exp_in_level(child_idx) {
+                while let Some(idx) = self[0..bound].expression_bound(child_idx) {
+                    if idx >= bound {
+                        break;
+                    }
                     child_idx = idx;
                     children_ids.push(idx);
                 }
@@ -131,7 +143,7 @@ impl FlatAst for [FlatRuleExp] {
 }
 
 /// match a quantifier (*, +, ?). must be parsed before its sub-expression
-fn match_quantifiers(tokens: &[Option<&RuleToken>]) -> Option<(FlatRuleExp, Vec<usize>)> {
+fn match_quantifiers(tokens: &[Option<&RuleToken>]) -> Option<(RuleExp, Vec<usize>)> {
     let mut idx: usize = 0;
     let mut parenthesis_count: isize = 0;
     let mut expr_count: isize = 0;
@@ -150,17 +162,17 @@ fn match_quantifiers(tokens: &[Option<&RuleToken>]) -> Option<(FlatRuleExp, Vec<
             },
             RuleToken::Any => {
                 if expr_count == 1 && parenthesis_count == 0 { 
-                    return Some((FlatRuleExp::FlatAny, vec![idx]));
+                    return Some((RuleExp::Any, vec![idx]));
                 } else { break;}
             },
             RuleToken::AtLeastOnce => {
                 if expr_count == 1 && parenthesis_count == 0 { 
-                    return Some((FlatRuleExp::FlatAtLeastOnce, vec![idx])); 
+                    return Some((RuleExp::AtLeastOnce, vec![idx])); 
                 } else { break;}
             },
             RuleToken::Optional => {
                 if expr_count == 1 && parenthesis_count == 0 { 
-                    return Some((FlatRuleExp::FlatOptional, vec![idx]));
+                    return Some((RuleExp::Optional, vec![idx]));
                 } else { break;}
             },
             _ => {},
@@ -174,7 +186,7 @@ fn match_quantifiers(tokens: &[Option<&RuleToken>]) -> Option<(FlatRuleExp, Vec<
 }
 
 /// Match a parenthesis group **starting at the index 0**
-fn match_parenthesis_fenced(tokens: &[Option<&RuleToken>]) -> Option<(FlatRuleExp, Vec<usize>)> {
+fn match_parenthesis_fenced(tokens: &[Option<&RuleToken>]) -> Option<(RuleExp, Vec<usize>)> {
     let mut idx: usize = 0;
     let mut parenthesis_count: isize = 0;
     let mut parenthesis_indices: Vec<usize> = Vec::new();
@@ -201,11 +213,11 @@ fn match_parenthesis_fenced(tokens: &[Option<&RuleToken>]) -> Option<(FlatRuleEx
     if parenthesis_indices.is_empty() {
         return None;
     }
-    Some((FlatRuleExp::FlatFence, parenthesis_indices))
+    Some((RuleExp::Fence, parenthesis_indices))
 }
 
 /// match variants eg: <expr_a>|<expr_b>|...|<expr_n>
-fn match_variants(tokens: &[Option<&RuleToken>]) -> Option<(FlatRuleExp, Vec<usize>)> {
+fn match_variants(tokens: &[Option<&RuleToken>]) -> Option<(RuleExp, Vec<usize>)> {
     let mut idx: usize = 0;
     let mut parenthesis_count: isize = 0;
     let mut or_indices: Vec<usize> = Vec::new();
@@ -228,12 +240,12 @@ fn match_variants(tokens: &[Option<&RuleToken>]) -> Option<(FlatRuleExp, Vec<usi
     if or_indices.is_empty() {
         return None;
     }
-    Some((FlatRuleExp::FlatVariants(or_indices.len() + 1), or_indices))
+    Some((RuleExp::Variants(or_indices.len() + 1), or_indices))
 }
 
 /// match a sequence of expressions
-fn match_sequence(tokens: &[Option<&RuleToken>], last: Option<&FlatRuleExp>) -> Option<(FlatRuleExp, Vec<usize>)> {
-    if let Some(FlatRuleExp::FlatSequence(_)) = last {
+fn match_sequence(tokens: &[Option<&RuleToken>], last: Option<&RuleExp>) -> Option<(RuleExp, Vec<usize>)> {
+    if let Some(RuleExp::Sequence(_)) = last {
         // cannot have 2 sequences in a row
         // because a matched sequence does not consume any Token,
         // this check avoid infinite loops
@@ -265,24 +277,24 @@ fn match_sequence(tokens: &[Option<&RuleToken>], last: Option<&FlatRuleExp>) -> 
     if group_nb <= 1 {
         return None;
     }
-    Some((FlatRuleExp::FlatSequence(group_nb), vec![]))
+    Some((RuleExp::Sequence(group_nb), vec![]))
 }
 
 /// A Target object, e.g: a literal, '^', '$' ...
 /// only if it is in the *first* position
-fn match_target(tokens: &[Option<&RuleToken>]) -> Option<(FlatRuleExp, Vec<usize>)> {
+fn match_target(tokens: &[Option<&RuleToken>]) -> Option<(RuleExp, Vec<usize>)> {
     match tokens.first() {
-        Some(Some(RuleToken::Start)) => Some((FlatRuleExp::FlatTarget(TargetKind::Start), vec![0])),
-        Some(Some(RuleToken::End)) => Some((FlatRuleExp::FlatTarget(TargetKind::End), vec![0])),
-        Some(Some(RuleToken::Literal(c))) => Some((FlatRuleExp::FlatTarget(TargetKind::Literal(*c)), vec![0])),
+        Some(Some(RuleToken::Start)) => Some((RuleExp::Target(TargetKind::Start), vec![0])),
+        Some(Some(RuleToken::End)) => Some((RuleExp::Target(TargetKind::End), vec![0])),
+        Some(Some(RuleToken::Literal(c))) => Some((RuleExp::Target(TargetKind::Literal(*c)), vec![0])),
         _ => None,
     }
 }
 
 /// Parse a token slice into a flat representation 
 /// of a Rule Abstract Syntax Tree, in Reverse Polish Notation
-pub fn parse_flat_rules(tokens: &[RuleToken]) -> Result<Vec<FlatRuleExp>, ParseError> {
-    let mut exprs: Vec<FlatRuleExp> = Vec::new();
+pub fn parse_flat_rules(tokens: &[RuleToken]) -> Result<Vec<RuleExp>, ParseError> {
+    let mut exprs: Vec<RuleExp> = Vec::new();
     // in this vector, a None item represents a parsed RuleToken
     let mut unparsed_tokens: Vec<Option<&RuleToken>> = tokens.iter()
         .map(Some) // as Option<&RuleToken>
@@ -309,7 +321,7 @@ pub fn parse_flat_rules(tokens: &[RuleToken]) -> Result<Vec<FlatRuleExp>, ParseE
 
         // store parsed expression into a flat tree
         match flat_exp {
-            FlatRuleExp::FlatFence => {}, // filter out fences
+            RuleExp::Fence => {}, // filter out fences
             e => {
                 exprs.push(e);
             }
@@ -324,95 +336,6 @@ pub fn parse_flat_rules(tokens: &[RuleToken]) -> Result<Vec<FlatRuleExp>, ParseE
 }
 
 
-#[derive(Debug,PartialEq,Eq)]
-pub enum RuleExp {
-    // repetitions
-    Once(Box<RuleExp>),
-    AtLeastOnce(Box<RuleExp>),
-    Any(Box<RuleExp>),
-    Optional(Box<RuleExp>),
-    // Combinators
-    Variants(Vec<RuleExp>),
-    // todo: Class
-    Target(TargetKind),
-    // 
-    Sequence(Vec<RuleExp>),
-}
-
-/// This stuct represent a rule **Abstract syntax Tree**.
-/// It can be use to build a DFA or NFA
-#[derive(Debug,PartialEq,Eq)]
-pub struct RuleAst {
-    pub rules: RuleExp,
-}
-
-impl RuleAst {
-
-    /// Build a `RuleAst` from a vector of flat expressions.
-    fn from_flat_rule_expressions(mut flat_exps: Vec<FlatRuleExp>) -> Result<Self,ParseError> {
-        use FlatRuleExp::*;
-        use RuleExp::*;
-        let mut expressions: Vec<RuleExp> = Vec::new();
-        while let Some(flat_exp) = flat_exps.pop() {
-            dbg!(&flat_exp);
-            match flat_exp {
-                FlatSequence(nb) => {
-                    let mut sequence: Vec<RuleExp> = Vec::new();
-                    for _ in 0..nb {
-                        sequence.push(
-                            expressions
-                                .pop()
-                                .ok_or(ParseError("No expression to pop.".into()))?
-                        );
-                    }
-                    expressions.push(Sequence(sequence));
-                },
-                FlatTarget(target) => {
-                    expressions.push(Target(target));
-                },
-                FlatVariants(nb) => {
-                    let mut variants: Vec<RuleExp> = Vec::new();
-                    for _ in 0..nb {
-                        variants.push(
-                            expressions
-                                .pop()
-                                .ok_or(ParseError("No expression to pop.".into()))?
-                        );
-                    }
-                    expressions.push(Variants(variants));
-                },
-                FlatOptional => {
-                    let optional_exp = expressions
-                        .pop()
-                        .ok_or(ParseError("No expression to pop.".into()))?;
-                    expressions.push(Optional(Box::new(optional_exp)));
-                },
-                FlatAny => {
-                    let exp = expressions
-                        .pop()
-                        .ok_or(ParseError("No expression to pop.".into()))?;
-                    expressions.push(Any(Box::new(exp)));
-                },
-                FlatAtLeastOnce => {
-                    let exp = expressions
-                        .pop()
-                        .ok_or(ParseError("No expression to pop.".into()))?;
-                    expressions.push(AtLeastOnce(Box::new(exp)));
-                },
-                FlatFence => {},
-            }
-        }
-        Ok(RuleAst { rules: expressions.pop().ok_or(ParseError("expressions list is empty".into()))?})
-    }
-
-    /// Build a `RuleAst` from a rule/pattern string
-    pub fn from_str(rule_str: &str) -> Result<Self, ParseError> {
-        let tokens: Vec<RuleToken> = RuleToken::from_str(rule_str)
-            .map_err(|_| ParseError("Failed to lex the input str".into()))?;
-        let rules = parse_flat_rules(&tokens)?;
-        RuleAst::from_flat_rule_expressions(rules)
-    }
-}
 
 #[test]
 fn flat_quantifier_parse() {
@@ -424,8 +347,8 @@ fn flat_quantifier_parse() {
     assert_eq!(
         parse_flat_rules(&tokens),
         Ok(vec![
-            FlatRuleExp::FlatOptional,
-            FlatRuleExp::FlatTarget(TargetKind::Literal('c')),
+            RuleExp::Optional,
+            RuleExp::Target(TargetKind::Literal('c')),
         ]),
     );
     // ab?
@@ -437,10 +360,10 @@ fn flat_quantifier_parse() {
     assert_eq!(
         parse_flat_rules(&tokens),
         Ok(vec![
-            FlatRuleExp::FlatSequence(2),
-            FlatRuleExp::FlatTarget(TargetKind::Literal('a')),
-            FlatRuleExp::FlatOptional,
-            FlatRuleExp::FlatTarget(TargetKind::Literal('b')),
+            RuleExp::Sequence(2),
+            RuleExp::Target(TargetKind::Literal('a')),
+            RuleExp::Optional,
+            RuleExp::Target(TargetKind::Literal('b')),
         ]),
     );
     // a|b?
@@ -453,10 +376,10 @@ fn flat_quantifier_parse() {
     assert_eq!(
         parse_flat_rules(&tokens),
         Ok(vec![
-            FlatRuleExp::FlatVariants(2),
-            FlatRuleExp::FlatTarget(TargetKind::Literal('a')),
-            FlatRuleExp::FlatOptional,
-            FlatRuleExp::FlatTarget(TargetKind::Literal('b')),
+            RuleExp::Variants(2),
+            RuleExp::Target(TargetKind::Literal('a')),
+            RuleExp::Optional,
+            RuleExp::Target(TargetKind::Literal('b')),
         ]),
     );
     // (a|b)*
@@ -471,10 +394,10 @@ fn flat_quantifier_parse() {
     assert_eq!(
         parse_flat_rules(&tokens),
         Ok(vec![
-            FlatRuleExp::FlatAny,
-            FlatRuleExp::FlatVariants(2),
-            FlatRuleExp::FlatTarget(TargetKind::Literal('a')),
-            FlatRuleExp::FlatTarget(TargetKind::Literal('b')),
+            RuleExp::Any,
+            RuleExp::Variants(2),
+            RuleExp::Target(TargetKind::Literal('a')),
+            RuleExp::Target(TargetKind::Literal('b')),
         ]),
     );
 }
@@ -494,103 +417,98 @@ fn flat_parse() {
     assert_eq!(
         parse_flat_rules(&tokens),
         Ok(vec![
-            FlatRuleExp::FlatSequence(2),
-            FlatRuleExp::FlatTarget(TargetKind::Literal('c')),
-            FlatRuleExp::FlatAny,
-            FlatRuleExp::FlatVariants(2),
-            FlatRuleExp::FlatSequence(2),
-            FlatRuleExp::FlatTarget(TargetKind::Literal('a')), 
-            FlatRuleExp::FlatTarget(TargetKind::Literal('a')), 
-            FlatRuleExp::FlatTarget(TargetKind::Literal('b')),
+            RuleExp::Sequence(2),
+            RuleExp::Target(TargetKind::Literal('c')),
+            RuleExp::Any,
+            RuleExp::Variants(2),
+            RuleExp::Sequence(2),
+            RuleExp::Target(TargetKind::Literal('a')), 
+            RuleExp::Target(TargetKind::Literal('a')), 
+            RuleExp::Target(TargetKind::Literal('b')),
         ]),
     );
 }
 
 #[test]
-fn ast_from_flat_expressions() {
-    // c(aa|b)*
-    let flat_exprs = vec![
-        FlatRuleExp::FlatSequence(2),
-        FlatRuleExp::FlatTarget(TargetKind::Literal('c')),
-        FlatRuleExp::FlatAny,
-        FlatRuleExp::FlatVariants(2),
-        FlatRuleExp::FlatSequence(2),
-        FlatRuleExp::FlatTarget(TargetKind::Literal('a')), 
-        FlatRuleExp::FlatTarget(TargetKind::Literal('a')), 
-        FlatRuleExp::FlatTarget(TargetKind::Literal('b')),
-    ];
+fn get_parent_in_AST() {
     use RuleExp::*;
     use TargetKind::*;
+
+    // ast for "a|bc|d"
+    let ast = vec![
+        Variants(3),
+        Target(Literal('a')), 
+        Sequence(2),
+        Target(Literal('b')), 
+        Target(Literal('c')), 
+        Target(Literal('d')), 
+    ];
+
     assert_eq!(
-        RuleAst::from_flat_rule_expressions(flat_exprs),
-        Ok( 
-            RuleAst {
-                rules: Sequence(
-                    vec![
-                        Target(Literal('c')), 
-                        Any(Box::new(
-                            Variants(vec![
-                                Sequence(
-                                    vec![
-                                        Target(Literal('a')), 
-                                        Target(Literal('a'))
-                                    ]
-                                ),
-                                Target(Literal('b')),
-                            ])
-                        )),
-                    ]
-                )
-            }
-        )
+        ast.parent_index(1),
+        Some(0),
+    );
+    assert_eq!(
+        ast.parent_index(2),
+        Some(0),
+    );
+    assert_eq!(
+        ast.parent_index(3),
+        Some(2),
+    );
+    assert_eq!(
+        ast.parent_index(4),
+        Some(2),
     );
 }
 
 #[test]
-fn ast_from_str() {
-    // a|bc
+fn get_children_indices() {
     use RuleExp::*;
     use TargetKind::*;
+
+    // ast for "a|bc|d"
+    let ast = vec![
+        Variants(3),
+        Target(Literal('a')), 
+        Sequence(2),
+        Target(Literal('b')), 
+        Target(Literal('c')), 
+        Target(Literal('d')), 
+    ];
+
     assert_eq!(
-        RuleAst::from_str("a|bc"),
-        Ok( 
-            RuleAst {
-                rules: Variants(
-                           vec![
-                                Target(Literal('a')),
-                                Sequence(
-                                    vec![
-                                        Target(Literal('b')), 
-                                        Target(Literal('c'))
-                                    ]
-                                ),
-                            ]
-                        )
-            }
-        )
+        ast.children_indices(0),
+        Some(vec![1, 2, 5]),
     );
-    // c(aa|b)*
     assert_eq!(
-        RuleAst::from_str("c(aa|b)*"),
-        Ok( 
-            RuleAst {
-                rules: Sequence(
-                    vec![
-                        Target(Literal('c')), 
-                        Any(Box::new(
-                            Variants(vec![
-                                Sequence(
-                                    vec![
-                                        Target(Literal('a')), 
-                                        Target(Literal('a'))
-                                    ]
-                                ),
-                                Target(Literal('b')),
-                            ])
-                        )),
-                    ]
-                )
-            }
-        )
+        ast.children_indices(2),
+        Some(vec![3, 4]),
+    );
+}
+
+#[test]
+fn get_sub_expressions_in_AST() {
+    use RuleExp::*;
+    use TargetKind::*;
+
+    // ast for "a|bc|d"
+    let ast = vec![
+        Variants(3),
+        Target(Literal('a')), 
+        Sequence(2),
+        Target(Literal('b')), 
+        Target(Literal('c')), 
+        Target(Literal('d')), 
+    ];
+
+    assert_eq!(
+        ast.sub_exp_indices(0),
+        Some(vec![1, 2, 3, 4, 5]),
+    );
+
+    assert_eq!(
+        ast.sub_exp_indices(2),
+        Some(vec![3, 4]),
     );
 }

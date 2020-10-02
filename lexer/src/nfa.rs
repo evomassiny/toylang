@@ -5,8 +5,8 @@ use std::fmt;
 use crate::rule_lexer::RuleToken;
 use crate::rule_parser::{
     TargetKind,
-    FlatRuleExp,
-    FlatAst,
+    RuleExp,
+    RuleAst,
     ParseError,
 };
 
@@ -69,8 +69,8 @@ pub struct NFA {
 
 impl NFA {
 
-    fn from_flat_ast(ast: &[FlatRuleExp]) -> Result<Self, ParseError> {
-        use FlatRuleExp::*;
+    fn from_flat_ast(ast: &[RuleExp]) -> Result<Self, ParseError> {
+        use RuleExp::*;
         use StateKind::*;
 
         // produces uniq states labels
@@ -92,7 +92,7 @@ impl NFA {
             // solve the deepest level first
             let mut depth_idx = ids_to_process.len() - 1;
             'level_traversal: while let Some(idx) = ids_to_process[depth_idx].pop() {
-                let node: &FlatRuleExp = &ast[idx];
+                let node: &RuleExp = &ast[idx];
                 if let Some(indices) = ast.sub_exp_indices(idx) {
                     ids_to_process.push(indices);
                     // set the current node as "in process"
@@ -108,19 +108,19 @@ impl NFA {
                 };
                 let mut state_transitions = Vec::new();
                 match node {
-                    FlatTarget(ref kind) => { 
+                    Target(ref kind) => { 
                         let transition = Transition { 
                             condition: Some(*kind),
                             target: end_state_id,
                         };
                         state_transitions.push(transition);
                     },
-                    FlatOnce => { ; },
-                    FlatAtLeastOnce => { ; },
-                    FlatAny => { ; },
-                    FlatOptional => { ; },
-                    FlatVariants(n) => { ; },
-                    FlatSequence(n) => { ; },
+                    Once => { ; },
+                    AtLeastOnce => { ; },
+                    Any => { ; },
+                    Optional => { ; },
+                    Variants(n) => { ; },
+                    Sequence(n) => { ; },
                 }
                 states.push(end_state);
                 transitions.push(state_transitions);
