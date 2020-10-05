@@ -95,8 +95,10 @@ impl RuleAst for [RuleExp] {
                 _ => {
                     match self.right_bound(cursor) {
                         None => {},
-                        Some(idx) if idx < cursor => {},
-                        Some(_) => return Some(cursor),
+                        Some(idx) if n >= idx => {},
+                        Some(_) => {
+                            return Some(cursor)
+                        },
                     }
                 }
             }
@@ -162,6 +164,25 @@ fn get_parent_in_AST() {
         ast.parent_index(4),
         Some(2),
     );
+
+    // ast for "a+(bcd|d)?"
+    let ast = vec![
+        Sequence(2),
+        AtLeastOnce,
+        Target(Literal('a')),
+        Optional,
+        Variants(2),
+        Sequence(3),
+        Target(Literal('b')), 
+        Target(Literal('c')), 
+        Target(Literal('d')), 
+        Target(Literal('e')), 
+    ];
+    assert_eq!(
+        ast.parent_index(9),
+        Some(4),
+    );
+
 }
 
 #[test]
@@ -245,5 +266,27 @@ fn get_right_bound() {
     assert_eq!(
         ast.right_bound(4),
         Some(6),
+    );
+    
+    // ast for "a+(bcd|d)?"
+    let ast = vec![
+        Sequence(2),
+        AtLeastOnce,
+        Target(Literal('a')),
+        Optional,
+        Variants(2),
+        Sequence(3),
+        Target(Literal('b')), 
+        Target(Literal('c')), 
+        Target(Literal('d')), 
+        Target(Literal('e')), 
+    ];
+    assert_eq!(
+        ast.right_bound(5),
+        Some(9),
+    );
+    assert_eq!(
+        ast.right_bound(4),
+        Some(10),
     );
 }

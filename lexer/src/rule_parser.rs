@@ -19,6 +19,11 @@ impl fmt::Display for ParseError {
     }
 }
 impl Error for ParseError {}
+impl ParseError {
+    pub fn new(msg: &str) -> ParseError {
+        Self(msg.into())
+    }
+}
 
 
 /// match a quantifier (*, +, ?). must be parsed before its sub-expression

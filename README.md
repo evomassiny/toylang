@@ -37,4 +37,5 @@ The supported syntaxe is a small subset of the javascript one:
 (see ./source.js for an example)
 
 # Credits
-This repo takes huge inspirations from the [**boa**](https://github.com/jasonwilliams/boa) interpreter.
+ * This repo takes huge inspirations from the [**boa**](https://github.com/jasonwilliams/boa) interpreter.
+ * The lexer was inpired by the [**regex**](https://github.com/rust-lang/regex/blob/master/HACKING.md) crate documentation.

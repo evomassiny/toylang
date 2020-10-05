@@ -12,24 +12,17 @@ use crate::rule_ast::{
 
 type StateID = usize;
 
-/// Represents a transition between 2 states in an Non-Finite Automata
-pub struct Transition {
-    /// the condition to fullfill in order to follow this transition
-    /// `None` represents an Epsilon transistion
-    condition: Option<TargetKind>,
-    /// Which state this transition points to
-    target: StateID,
-}
-
 /// A State can be:
 /// * the starting state
 /// * a final state
 /// * a non-final state
+#[derive(PartialEq,Eq,Hash,Debug,Clone)]
 pub enum State {
     Start,
     End,
     Named(StateID),
 }
+
 impl State {
     /// Return a `Named` state that represents the `item_idx` state of the `Sequence`
     /// expressed by the `exp_idx` element of an AST (eg: a [RuleExp]).
@@ -38,6 +31,15 @@ impl State {
     }
 }
 
+/// Represents a transition between 2 states in an Non-Finite Automata
+#[derive(PartialEq,Eq,Debug)]
+pub struct Transition {
+    /// the condition to fullfill in order to follow this transition
+    /// `None` represents an Epsilon transistion
+    condition: Option<TargetKind>,
+    /// Which state this transition points to
+    target: State,
+}
 
 pub trait NfaBuilder {
     
@@ -45,12 +47,11 @@ pub trait NfaBuilder {
     /// position of the closest relative of `n` among its siblings.
     /// Returns None when `n` as no `Sequence` parent.
     fn find_parent_sequence(&self, n: usize) -> Option<(usize, usize)>;
-    /// Returns the previous state from which this expression
-    /// starts to.
-    /// This relies on the fact that we can construct a NFA 
-    /// only using states in-between each items of a Sequence and 
-    /// 2 other states: end + start
+    
+    /// Returns the next state (the one from which this expression points toward).
     fn right_state(&self, n: usize) -> Option<State>;
+    
+    /// Returns the previous state (the one from which this expression starts from)
     fn left_state(&self, n: usize) -> Option<State>;
 }
 
@@ -73,7 +74,6 @@ impl NfaBuilder for [RuleExp] {
                     }
                     // count every item until `cursor` match the item index
                     let mut item_count: usize = 0;
-                    dbg!(item_count, item_idx, cursor);
                     while item_idx != cursor {
                         match self.right_bound(item_idx) {
                             None => break,
@@ -94,6 +94,9 @@ impl NfaBuilder for [RuleExp] {
     }
 
     fn right_state(&self, n: usize) -> Option<State> {
+        // This relies on the fact that we can construct a NFA 
+        // only using states in-between each items of a Sequence and 
+        // 2 other states: end + start
         let mut cursor = n;
         'bottom_up_ast_traversal: loop {
             match self.find_parent_sequence(cursor) {
@@ -126,6 +129,9 @@ impl NfaBuilder for [RuleExp] {
     }
 
     fn left_state(&self, n: usize) -> Option<State> {
+        // This relies on the fact that we can construct a NFA 
+        // only using states in-between each items of a Sequence and 
+        // 2 other states: end + start
         let mut cursor = n;
         'bottom_up_ast_traversal: loop {
             match self.find_parent_sequence(cursor) {
@@ -141,8 +147,9 @@ impl NfaBuilder for [RuleExp] {
                                 continue 'bottom_up_ast_traversal;
                             }
                             // otherwise we found the left state, identified 
-                            // by the couple (sequence_idx, item_pos)
-                            return Some(State::from_expression_and_item_indices(sequence_idx, item_pos));
+                            // by the couple (sequence_idx, item_pos - 1 )
+                            // (we substract one to get the index of the LEFT state)
+                            return Some(State::from_expression_and_item_indices(sequence_idx, item_pos - 1));
                         },
                         _ => {
                             // unreachable unless the AST is broken
@@ -150,70 +157,105 @@ impl NfaBuilder for [RuleExp] {
                             // index of a RuleExp::Sequence node
                             return None;
                         }
-
                     }
                 }
             }
         }
+    }
 }
 
 
 /// a Non-Finite Automata
+#[derive(PartialEq,Eq,Debug)]
 pub struct NFA {
-    states: HashMap<StateID, Vec<Transition>>,
+    states: HashMap<State, Vec<Transition>>,
 }
 
 
 impl NFA {
 
-    fn from_flat_ast(ast: &[RuleExp]) -> Result<Self, ParseError> {
+    fn from_ast(ast: &[RuleExp]) -> Result<Self, ParseError> {
         use RuleExp::*;
         use State::*;
 
         // outputs
-        let mut states: HashMap<StateID, Vec<Transition>> = HashMap::new();
+        let mut states: HashMap<State, Vec<Transition>> = HashMap::new();
+        for idx in 0..ast.len() {
+            // lookup left and right states 
+            let left = ast.left_state(idx)
+                .ok_or_else(|| ParseError::new("no previous state"))?;
+            let right = ast.right_state(idx)
+                .ok_or_else(|| ParseError::new("no next state"))?;
 
-        // main work queue 
-        let mut ids_to_process: Vec<Vec<usize>> = vec![(0..ast.len()).rev().collect()];
-        // either or not we stop the processing of an expression 
-        // to process its the expression children
-        let mut in_process: Vec<bool> = ast.iter().map(|_| false).collect();
+            // build their transitions tables
+            let mut left_state_transitions: Vec<Transition> = Vec::new();
+            let mut right_state_transitions: Vec<Transition> = Vec::new();
 
-        'ast_traversal: while !ids_to_process.is_empty() {
-            // solve the deepest level first
-            let mut depth_idx = ids_to_process.len() - 1;
-            'level_traversal: while let Some(idx) = ids_to_process[depth_idx].pop() {
-                let node: &RuleExp = &ast[idx];
-                if let Some(indices) = ast.sub_exp_indices(idx) {
-                    ids_to_process.push(indices);
-                    // set the current node as "in process"
-                    in_process[idx] = true;
-                    continue 'ast_traversal;
-                }
+            match ast[idx] {
+                Target(ref kind) => { 
+                    left_state_transitions.push(
+                        Transition { 
+                            condition: Some(*kind),
+                            target: right.clone(),
+                        }
+                    );
+                },
+                Variants(_) | Sequence(_) | Fence => {},
+                AtLeastOnce => {
+                    // add epsilon transition between
+                    // right to left states
+                    right_state_transitions.push(
+                        Transition { 
+                            condition: None,
+                            target: left.clone(),
+                        }
+                    );
+                },
+                Any => {
+                    // add epsilon transition between
+                    // right to left states
+                    // AND left to right states
+                    right_state_transitions.push(
+                        Transition { 
+                            condition: None,
+                            target: left.clone(),
+                        }
+                    );
+                    left_state_transitions.push(
+                        Transition { 
+                            condition: None,
+                            target: right.clone(),
+                        }
+                    );
+                },
+                Optional => {
+                    // add epsilon transition between
+                    // left to right states
+                    left_state_transitions.push(
+                        Transition { 
+                            condition: None,
+                            target: right.clone(),
+                        }
+                    );
+                },
+            }
 
-                match node {
-                    Target(ref kind) => { 
-                        //let transition = Transition { 
-                            //condition: Some(*kind),
-                            //target: end_state_id,
-                        //};
-                        //state_transitions.push(transition);
-                    },
-                    Once => { ; },
-                    AtLeastOnce => { ; },
-                    Any => { ; },
-                    Optional => { ; },
-                    Variants(n) => { ; },
-                    Sequence(n) => { ; },
-                }
-                if ids_to_process[depth_idx].is_empty() {
-                    let _ = ids_to_process.pop();
-                }
-
+            // add transitions to left state
+            // (creating one if none exists)
+            let transitions: &mut Vec<Transition> = states.entry(left)
+                .or_insert_with(|| Vec::new());
+            if !left_state_transitions.is_empty() {
+                transitions.append(&mut left_state_transitions);
+            }
+            // add transitions to right state
+            // (creating one if none exists)
+            let transitions: &mut Vec<Transition> = states.entry(right)
+                .or_insert_with(|| Vec::new());
+            if !right_state_transitions.is_empty() {
+                transitions.append(&mut right_state_transitions);
             }
         }
-
-        Ok(Self { states: states })
+        Ok(NFA { states })
     }
 
 }
@@ -244,5 +286,258 @@ fn find_parent_sequence() {
     assert_eq!(
         ast.find_parent_sequence(1),
         Some((0, 0)),
+    );
+    
+    // ast for "a+(bcd|d)?"
+    let ast = vec![
+        Sequence(2),
+        AtLeastOnce,
+        Target(Literal('a')),
+        Optional,
+        Variants(2),
+        Sequence(3),
+        Target(Literal('b')), 
+        Target(Literal('c')), 
+        Target(Literal('d')), 
+        Target(Literal('e')), 
+    ];
+    assert_eq!(
+        ast.find_parent_sequence(9),
+        Some((0, 1)),
+    );
+}
+
+#[test]
+fn left_state_lookup() {
+    use RuleExp::*;
+    use TargetKind::*;
+
+    // ast for "a+(bcd|d)?"
+    let ast = vec![
+        Sequence(2),
+        AtLeastOnce,
+        Target(Literal('a')),
+        Optional,
+        Variants(2),
+        Sequence(3),
+        Target(Literal('b')), 
+        Target(Literal('c')), 
+        Target(Literal('d')), 
+        Target(Literal('e')), 
+    ];
+
+    assert_eq!(
+        ast.left_state(0),
+        Some(State::Start),
+    );
+    assert_eq!(
+        ast.left_state(1),
+        Some(State::Start),
+    );
+    assert_eq!(
+        ast.left_state(2),
+        Some(State::Start),
+    );
+
+    assert_eq!(
+        ast.left_state(7),
+        Some(State::from_expression_and_item_indices(5, 0)),
+    );
+
+    assert_eq!(
+        ast.left_state(9),
+        Some(State::from_expression_and_item_indices(0, 0)),
+    );
+    
+    // ast for "abc"
+    let ast = vec![
+        Sequence(3),
+        Target(Literal('a')), 
+        Target(Literal('b')), 
+        Target(Literal('c')), 
+    ];
+    assert_eq!(
+        ast.left_state(1),
+        Some(State::Start),
+    );
+    assert_eq!(
+        ast.left_state(2),
+        Some(State::from_expression_and_item_indices(0, 0)),
+    );
+    assert_eq!(
+        ast.left_state(3),
+        Some(State::from_expression_and_item_indices(0, 1)),
+    );
+}
+
+#[test]
+fn right_state_lookup() {
+    use RuleExp::*;
+    use TargetKind::*;
+
+    // ast for "abc"
+    let ast = vec![
+        Sequence(3),
+        Target(Literal('a')), 
+        Target(Literal('b')), 
+        Target(Literal('c')), 
+    ];
+    assert_eq!(
+        ast.right_state(1),
+        Some(State::from_expression_and_item_indices(0, 0)),
+    );
+    assert_eq!(
+        ast.right_state(2),
+        Some(State::from_expression_and_item_indices(0, 1)),
+    );
+    assert_eq!(
+        ast.right_state(3),
+        Some(State::End),
+    );
+
+    // ast for "a+(bcd|d)?"
+    let ast = vec![
+        Sequence(2),
+        AtLeastOnce,
+        Target(Literal('a')),
+        Optional,
+        Variants(2),
+        Sequence(3),
+        Target(Literal('b')), 
+        Target(Literal('c')), 
+        Target(Literal('d')), 
+        Target(Literal('e')), 
+    ];
+
+    assert_eq!(
+        ast.right_state(0),
+        Some(State::End),
+    );
+    assert_eq!(
+        ast.right_state(1),
+        Some(State::from_expression_and_item_indices(0, 0)),
+    );
+    assert_eq!(
+        ast.right_state(2),
+        Some(State::from_expression_and_item_indices(0, 0)),
+    );
+
+    assert_eq!(
+        ast.right_state(7),
+        Some(State::from_expression_and_item_indices(5, 1)),
+    );
+
+    assert_eq!(
+        ast.right_state(9),
+        Some(State::End),
+    );
+}
+
+#[test]
+fn nfa_target() {
+    use RuleExp::*;
+    use TargetKind::*;
+
+    // ast for "a"
+    let ast = vec![
+        Target(Literal('a')),
+    ];
+
+    let mut states = HashMap::new();
+    states.insert(
+        State::Start,
+        vec![
+            Transition { condition: Some(Literal('a')), target: State::End }, 
+        ]
+    );
+    states.insert(
+        State::End,
+        vec![]
+    );
+    assert_eq!(
+        NFA::from_ast(&ast),
+        Ok(NFA { states: states }),
+    );
+}
+
+#[test]
+fn nfa_sequence() {
+    use RuleExp::*;
+    use TargetKind::*;
+
+    // ast for "abc"
+    let ast = vec![
+        Sequence(3),
+        Target(Literal('a')),
+        Target(Literal('b')),
+        Target(Literal('c')),
+    ];
+
+    let mut states = HashMap::new();
+    states.insert(
+        State::Start,
+        vec![
+            Transition { condition: Some(Literal('a')), target: State::Named(0) }, 
+        ]
+    );
+    states.insert(
+        State::Named(0),
+        vec![
+            Transition { condition: Some(Literal('b')), target: State::Named(1) }, 
+        ]
+    );
+    states.insert(
+        State::Named(1),
+        vec![
+            Transition { condition: Some(Literal('c')), target: State::End }, 
+        ]
+    );
+    states.insert(
+        State::End,
+        vec![]
+    );
+    assert_eq!(
+        NFA::from_ast(&ast),
+        Ok(NFA { states: states }),
+    );
+}
+
+#[test]
+fn nfa_generation() {
+    use RuleExp::*;
+    use TargetKind::*;
+
+    // ast for "a(b|c?)"
+    let ast = vec![
+        Sequence(2),
+        Target(Literal('a')),
+        Variants(2),
+        Target(Literal('b')), 
+        Optional,
+        Target(Literal('c')), 
+    ];
+
+    let mut states = HashMap::new();
+    states.insert(
+        State::Start,
+        vec![
+            Transition { condition: Some(Literal('a')), target: State::Named(0) }, 
+        ]
+    );
+    states.insert(
+        State::Named(0),
+        vec![
+            Transition { condition: Some(Literal('b')), target: State::End }, 
+            Transition { condition: None, target: State::End }, 
+            Transition { condition: Some(Literal('c')), target: State::End }, 
+        ]
+    );
+    states.insert(
+        State::End,
+        vec![]
+    );
+    assert_eq!(
+        NFA::from_ast(&ast),
+        Ok(NFA { states: states }),
     );
 }
