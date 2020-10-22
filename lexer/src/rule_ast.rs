@@ -6,6 +6,14 @@ pub enum TargetKind {
     End,
     Literal(char),
 }
+impl TargetKind {
+
+    /// returns either `other` is a subset of `self`
+    pub fn contains(&self, other: &Self) -> bool {
+        *self == *other
+    }
+
+}
 
 /// A flat representation of an Abstract syntax Tree
 #[derive(Debug,PartialEq,Eq)]
