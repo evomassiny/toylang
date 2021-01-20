@@ -151,7 +151,7 @@ impl Compiler {
             // Build the intruction set needed to evaluate the current expression
             use Expr::*;
             let insts: Vec<ProtoInstruction> = match ast_node.expression {
-                Const(c) => ec::compile_const(c)?,
+                Literal(l) => ec::compile_literal(l)?,
                 Return(_) => ec::compile_return(sub_instructions)?,
                 If(..) => ec::compile_if(sub_instructions, &mut labels)?,
                 Block(..) => {

@@ -19,7 +19,7 @@ pub use ast::{
     Expr
 };
 pub use parser::{
-    Const,
+    Literal,
     BinaryOp,
     NumericalOp,
     ComparisonOp,

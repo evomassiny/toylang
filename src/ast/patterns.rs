@@ -1,7 +1,7 @@
 use crate::ast::parser::{
     FlatExp,
     FlatExp::*,
-    Const,
+    Literal,
     UnaryOp,
     BinaryOp::*,
     ComparisonOp,
@@ -274,15 +274,15 @@ pub fn match_const(tokens: &[Option<&Token>]) -> Option<(FlatExp, Vec<usize>)> {
     match tokens[0] {
         Some(Token { kind: Literal(literal), ..} ) => {
             match literal {
-                Boolean(value) => return Some((FlatConst(Const::Bool(*value)),vec![0])),
-                Numeric(value) => return Some((FlatConst(Const::Num(*value)), vec![0])),
-                Str(value) => return Some((FlatConst(Const::Str(value.into())), vec![0])),
+                Boolean(value) => return Some((FlatLiteral(Literal::Bool(*value)),vec![0])),
+                Numeric(value) => return Some((FlatLiteral(Literal::Num(*value)), vec![0])),
+                Str(value) => return Some((FlatLiteral(Literal::Str(value.into())), vec![0])),
             }
         },
         Some(Token { kind: Keyword(keyword), ..} ) => {
             match keyword {
-                Null => return Some((FlatConst(Const::Null), vec![0])),
-                Undefined => return Some((FlatConst(Const::Undefined), vec![0])),
+                Null => return Some((FlatLiteral(Literal::Null), vec![0])),
+                Undefined => return Some((FlatLiteral(Literal::Undefined), vec![0])),
                 _ => {}
             }
         },
@@ -612,7 +612,7 @@ mod test {
     use crate::ast::lexer::lex;
     use crate::ast::parser::{
         FlatExp,
-        Const,
+        Literal,
         UnaryOp,
         BinaryOp::*,
         NumericalOp,
@@ -912,7 +912,7 @@ mod test {
         assert_eq!(
             patterns::match_const(&unparsed_tokens),
             Some((
-                FlatExp::FlatConst(Const::Num(1.)),
+                FlatExp::FlatLiteral(Literal::Num(1.)),
                 vec![0]
             )),
             "Failed to match const literal"
@@ -922,7 +922,7 @@ mod test {
         assert_eq!(
             patterns::match_const(&unparsed_tokens),
             Some((
-                FlatExp::FlatConst(Const::Bool(true)),
+                FlatExp::FlatLiteral(Literal::Bool(true)),
                 vec![0]
             )),
             "Failed to match const literal"
@@ -932,7 +932,7 @@ mod test {
         assert_eq!(
             patterns::match_const(&unparsed_tokens),
             Some((
-                FlatExp::FlatConst(Const::Str("bim".into())),
+                FlatExp::FlatLiteral(Literal::Str("bim".into())),
                 vec![0]
             )),
             "Failed to match const literal"
@@ -942,7 +942,7 @@ mod test {
         assert_eq!(
             patterns::match_const(&unparsed_tokens),
             Some((
-                FlatExp::FlatConst(Const::Null),
+                FlatExp::FlatLiteral(Literal::Null),
                 vec![0]
             )),
             "Failed to match const literal null"
@@ -952,7 +952,7 @@ mod test {
         assert_eq!(
             patterns::match_const(&unparsed_tokens),
             Some((
-                FlatExp::FlatConst(Const::Undefined),
+                FlatExp::FlatLiteral(Literal::Undefined),
                 vec![0]
             )),
             "Failed to match const literal undefined"

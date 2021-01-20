@@ -44,7 +44,7 @@ impl ValueStack {
 
 /// Tells the `Context` to run garbage collections
 /// every `CREATION_NB_UNTIL_GC` ExecutionCtx creations
-const CREATION_NB_UNTIL_GC: usize = 500;
+const CREATION_NB_UNTIL_GC: usize = 100;
 
 #[derive(Debug)]
 pub struct ExecutionCtx {

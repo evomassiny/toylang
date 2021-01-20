@@ -3,7 +3,7 @@ use std::str::FromStr;
 use crate::ast::lexer::lex;
 use crate::ast::parser::{
     FlatExp,
-    Const,
+    Literal,
     UnaryOp,
     BinaryOp,
     parse_flat_expressions,
@@ -18,7 +18,7 @@ pub enum Expr {
     /// Run an operation on a value
     UnaryOp(UnaryOp, Box<Expr>),
     /// Make a constant value
-    Const(Const),
+    Literal(Literal),
     /// Run several expressions from top-to-bottom
     Block(Vec<Expr>),
     /// Call on an expression
@@ -54,7 +54,7 @@ impl Expr {
         match self {
             BinaryOp(..) => 2,
             UnaryOp(..) => 1,
-            Const(_) => 0,
+            Literal(_) => 0,
             Block(exprs) => exprs.len(),
             Call(_id, exprs) => exprs.len() + 1,
             WhileLoop(..) => 2,
@@ -88,7 +88,7 @@ impl Expr {
                     _ => None
                 }
             },
-            Const(_) => None,
+            Literal(_) => None,
             Block(exprs) => Some(exprs.get(idx)?),
             Assign(_name, e) => {
                 match idx {
@@ -185,9 +185,9 @@ impl Ast {
                         Assign(name, Box::new(exp))
                     );
                 },
-                // push the Const
-                FlatConst(c) => {
-                    exp_stack.push(Const(c));
+                // push the Literal
+                FlatLiteral(c) => {
+                    exp_stack.push(Literal(c));
                 },
                 // Collect each subexpressions and push a Block
                 FlatBlock(sub_exp_nb) => {

@@ -31,8 +31,8 @@ impl fmt::Debug for ParsingError {
 impl Error for ParsingError {}
 
 #[derive(Clone, Debug, PartialEq)]
-/// const expression
-pub enum Const {
+/// literal expression
+pub enum Literal {
     /// 8 bytes float
     Num(f64),
     /// A boolean
@@ -114,7 +114,7 @@ pub enum FlatExp {
     FlatUnaryOp(UnaryOp),
     /// Make a constant value
     /// consumes 1 expression
-    FlatConst(Const),
+    FlatLiteral(Literal),
     /// Run several expressions from top-to-bottom
     /// consumes `n` expressions
     FlatBlock(usize),
@@ -232,7 +232,7 @@ mod test {
 
     use crate::ast::parser::{
         FlatExp,
-        Const,
+        Literal,
         BinaryOp::*,
         NumericalOp,
         parse_flat_expressions,
@@ -247,7 +247,7 @@ mod test {
             Ok(vec![
                FlatBlock(1),
                FlatLetDecl("A".into(), 1),
-               FlatConst(Const::Num(1.)),
+               FlatLiteral(Literal::Num(1.)),
            ])
         );
 
@@ -275,8 +275,8 @@ mod test {
                FlatCall(3),
                //FlatCall("foo".into(), 2),
                FlatLocal("foo".into()),
-               FlatConst(Const::Num(1.)),
-               FlatConst(Const::Num(3.)),
+               FlatLiteral(Literal::Num(1.)),
+               FlatLiteral(Literal::Num(3.)),
            ])
         );
     }

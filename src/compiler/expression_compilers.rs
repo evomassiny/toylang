@@ -5,7 +5,7 @@ use crate::compiler::proto_instructions::{
     LabelGenerator,
 };
 use crate::ast::{
-    Const,
+    Literal,
     BinaryOp,
     BinaryOp::*,
     NumericalOp,
@@ -15,9 +15,9 @@ use crate::ast::{
 };
 
 
-/// Build the intructions needed to run a `Const` expression
-pub fn compile_const(c: &Const) -> Option<Vec<ProtoInstruction>> {
-    Some(vec![Val(ProtoValue::from_const(c))])
+/// Build the intructions needed to run a `Literal` expression
+pub fn compile_literal(l: &Literal) -> Option<Vec<ProtoInstruction>> {
+    Some(vec![Val(ProtoValue::from_literal(l))])
 }
 
 /// Build the intructions needed to run a `Break` expression
