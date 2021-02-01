@@ -12,6 +12,7 @@ The supported syntaxe is a small subset of the javascript one:
 * keywords:
     * `function` (only supports named function)
     * `while`
+    * `for`
     * `if`
     * `else`
     * `return`

@@ -181,6 +181,7 @@ impl Compiler {
                     ec::compile_binary_op(op, sub_instructions, &mut labels)?,
                 UnaryOp(op, ..) => ec::compile_unary_op(op, sub_instructions)?,
                 WhileLoop(..) => ec::compile_while(sub_instructions, &mut labels)?,
+                ForLoop(..) => ec::compile_for_loop(sub_instructions, &mut labels)?,
                 Break => ec::compile_break()?,
                 Continue => ec::compile_continue()?,
             };

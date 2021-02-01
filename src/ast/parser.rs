@@ -125,6 +125,10 @@ pub enum FlatExp {
     /// while the conditional expression resolves to true
     /// consumes 2 expressions => the condition, the block
     FlatWhileLoop,
+    /// Repeatedly run an expression 
+    /// while the conditional expression resolves to true
+    /// consumes 4 expressions => the initialization, the condition, the increment, and the block
+    FlatForLoop,
     /// Load a value from a reference (eg a variable name)
     FlatLocal(String),
     /// Store a value into a reference (eg a variable name)
@@ -186,6 +190,7 @@ pub fn parse_flat_expressions(tokens: &[Token]) -> Result<Vec<FlatExp>, ParsingE
             else if let Some(exp) = patterns::match_let(&unparsed_tokens[idx..]) { exp }
             else if let Some(exp) = patterns::match_if(&unparsed_tokens[idx..]) { exp }
             else if let Some(exp) = patterns::match_while(&unparsed_tokens[idx..]) { exp }
+            else if let Some(exp) = patterns::match_for_loop(&unparsed_tokens[idx..]) { exp }
             else if let Some(exp) = patterns::match_return(&unparsed_tokens[idx..]) { exp }
             else if let Some(exp) = patterns::match_semi_colomn_fenced(&unparsed_tokens[idx..]) { exp }
             else if let Some(exp) = patterns::match_assign(&unparsed_tokens[idx..]) { exp }

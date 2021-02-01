@@ -1,19 +1,7 @@
+use crate::ast::{BinaryOp, BinaryOp::*, ComparisonOp, Literal, LogicalOp, NumericalOp, UnaryOp};
 use crate::compiler::proto_instructions::{
-    ProtoValue,
-    ProtoInstruction,
-    ProtoInstruction::*,
-    LabelGenerator,
+    LabelGenerator, ProtoInstruction, ProtoInstruction::*, ProtoValue,
 };
-use crate::ast::{
-    Literal,
-    BinaryOp,
-    BinaryOp::*,
-    NumericalOp,
-    ComparisonOp,
-    LogicalOp,
-    UnaryOp,
-};
-
 
 /// Build the intructions needed to run a `Literal` expression
 pub fn compile_literal(l: &Literal) -> Option<Vec<ProtoInstruction>> {
@@ -36,14 +24,16 @@ pub fn compile_continue() -> Option<Vec<ProtoInstruction>> {
 ///     <expr>
 ///     PushToNext(1)
 ///     FnRet
-pub fn compile_return(mut sub_instructions: Vec<Vec<ProtoInstruction>>) -> Option<Vec<ProtoInstruction>> {
+pub fn compile_return(
+    mut sub_instructions: Vec<Vec<ProtoInstruction>>,
+) -> Option<Vec<ProtoInstruction>> {
     let mut instructions = Vec::new();
     match sub_instructions.pop() {
         Some(sub_instr) => {
             instructions.extend(sub_instr);
-        },
+        }
         None => {
-            // a function that returns nothing actually 
+            // a function that returns nothing actually
             // returns Undefined
             instructions.push(Val(ProtoValue::Undefined));
         }
@@ -62,7 +52,9 @@ pub fn compile_return(mut sub_instructions: Vec<Vec<ProtoInstruction>>) -> Optio
 ///     ClearStack
 ///     <expr_b>
 ///     DelStack
-pub fn compile_block(sub_instructions: Vec<Vec<ProtoInstruction>>) -> Option<Vec<ProtoInstruction>> {
+pub fn compile_block(
+    sub_instructions: Vec<Vec<ProtoInstruction>>,
+) -> Option<Vec<ProtoInstruction>> {
     let mut instructions: Vec<ProtoInstruction> = Vec::new();
     instructions.push(NewStack);
     for (i, sub_inst) in sub_instructions.into_iter().enumerate() {
@@ -85,7 +77,10 @@ pub fn compile_block(sub_instructions: Vec<Vec<ProtoInstruction>>) -> Option<Vec
 ///     AddrLabel 'label_true'
 ///     <expr_true>
 ///     AddrLabel 'end'
-pub fn compile_if(mut sub_instructions: Vec<Vec<ProtoInstruction>>, labels: &mut LabelGenerator) -> Option<Vec<ProtoInstruction>> {
+pub fn compile_if(
+    mut sub_instructions: Vec<Vec<ProtoInstruction>>,
+    labels: &mut LabelGenerator,
+) -> Option<Vec<ProtoInstruction>> {
     let mut instructions = Vec::new();
     let true_block_label = labels.jump_to();
     let end = labels.jump_to();
@@ -119,7 +114,10 @@ pub fn compile_if(mut sub_instructions: Vec<Vec<ProtoInstruction>>, labels: &mut
 ///     Store 'id' 'ctx'
 /// *`let id;`  is compiled as:
 ///     NewRef 'id' 'ctx'
-pub fn compile_let(id: &str, mut sub_instructions: Vec<Vec<ProtoInstruction>>) -> Option<Vec<ProtoInstruction>> {
+pub fn compile_let(
+    id: &str,
+    mut sub_instructions: Vec<Vec<ProtoInstruction>>,
+) -> Option<Vec<ProtoInstruction>> {
     let mut instructions = Vec::new();
     if let Some(sub_inst) = sub_instructions.pop() {
         instructions.extend(sub_inst);
@@ -145,9 +143,11 @@ pub fn compile_local(id: &str) -> Option<Vec<ProtoInstruction>> {
 ///     PushToNext(2)   // push the 2 args
 ///     <expr_called>
 ///     FnCall
-pub fn compile_call(mut sub_instructions: Vec<Vec<ProtoInstruction>>) -> Option<Vec<ProtoInstruction>> {
+pub fn compile_call(
+    mut sub_instructions: Vec<Vec<ProtoInstruction>>,
+) -> Option<Vec<ProtoInstruction>> {
     let mut instructions = Vec::new();
-    // set in order <arg 2>, <arg 1>, <arg 0>, <expr called> 
+    // set in order <arg 2>, <arg 1>, <arg 0>, <expr called>
     sub_instructions.reverse();
     let expr_called = sub_instructions.pop()?;
     let arg_nb = sub_instructions.len();
@@ -178,8 +178,8 @@ pub fn compile_call(mut sub_instructions: Vec<Vec<ProtoInstruction>>) -> Option<
 ///     <expr>                  // the function block instructions
 ///     ProtoValue(Undefined)   // Return a value no matter what
 ///     PushToNext(1)
-///     FnRet                   // quit the function evaluation 
-///     AddrLabel(end)          // the piece of code that is executed when the function is 
+///     FnRet                   // quit the function evaluation
+///     AddrLabel(end)          // the piece of code that is executed when the function is
 ///                             // declared
 ///     NewFunction(start)      // creates a new Function object
 ///     NewRef 'id'             // creates a new Reference `id`
@@ -190,7 +190,7 @@ pub fn compile_function_decl(
     name: &str,
     args: &Vec<String>,
     labels: &mut LabelGenerator,
-    ) -> Option<Vec<ProtoInstruction>> {
+) -> Option<Vec<ProtoInstruction>> {
     let mut instructions = Vec::new();
     // set the address of the function start and end
     let start = labels.begin_function();
@@ -198,14 +198,14 @@ pub fn compile_function_decl(
     // avoid evaluating the function if were not calling it
     instructions.push(Goto(end.addr));
     // set the `start` label here
-    instructions.push(AddrLabel(start)); 
-    
+    instructions.push(AddrLabel(start));
+
     // load args
     for arg in args {
         instructions.push(NewRef(arg.clone()));
         instructions.push(Store(arg.clone()));
     }
-    
+
     // process the function block
     let mut block = sub_instructions.pop()?;
     //delete the NewStack, its redondant
@@ -217,16 +217,16 @@ pub fn compile_function_decl(
 
     // insert a return statement in case none are defined in the block
     match instructions.last() {
-        Some(FnRet) => {},
+        Some(FnRet) => {}
         _ => {
             instructions.push(Val(ProtoValue::Undefined));
             instructions.push(PushToNext(1));
             instructions.push(FnRet);
-        },
+        }
     }
-    
+
     // set the end address
-    instructions.push(AddrLabel(end)); 
+    instructions.push(AddrLabel(end));
 
     // create a function object
     instructions.push(NewFunction(start.addr));
@@ -242,7 +242,10 @@ pub fn compile_function_decl(
 ///     <expr_b>
 ///     <expr_a>
 ///     Add
-pub fn compile_numerical_op(op: &NumericalOp, mut sub_instructions: Vec<Vec<ProtoInstruction>>) -> Option<Vec<ProtoInstruction>> {
+pub fn compile_numerical_op(
+    op: &NumericalOp,
+    mut sub_instructions: Vec<Vec<ProtoInstruction>>,
+) -> Option<Vec<ProtoInstruction>> {
     let mut instructions = Vec::new();
     // last instruction must be at the bottom of the stack
     instructions.extend(sub_instructions.pop()?);
@@ -265,7 +268,10 @@ pub fn compile_numerical_op(op: &NumericalOp, mut sub_instructions: Vec<Vec<Prot
 ///     <expr_b>
 ///     <expr_a>
 ///     GreaterThan
-pub fn compile_comparison_op(op: &ComparisonOp, mut sub_instructions: Vec<Vec<ProtoInstruction>>) -> Option<Vec<ProtoInstruction>> {
+pub fn compile_comparison_op(
+    op: &ComparisonOp,
+    mut sub_instructions: Vec<Vec<ProtoInstruction>>,
+) -> Option<Vec<ProtoInstruction>> {
     let mut instructions = Vec::new();
     // last instruction must be at the bottom of the stack
     instructions.extend(sub_instructions.pop()?);
@@ -299,7 +305,11 @@ pub fn compile_comparison_op(op: &ComparisonOp, mut sub_instructions: Vec<Vec<Pr
 ///     <expr_b>
 ///     Or
 ///     AddrLabel 'end'
-pub fn compile_logical_op(op: &LogicalOp, mut sub_instructions: Vec<Vec<ProtoInstruction>>, labels: &mut LabelGenerator) -> Option<Vec<ProtoInstruction>> {
+pub fn compile_logical_op(
+    op: &LogicalOp,
+    mut sub_instructions: Vec<Vec<ProtoInstruction>>,
+    labels: &mut LabelGenerator,
+) -> Option<Vec<ProtoInstruction>> {
     // avoid evaluating the function if were not calling it
     let right_hand = sub_instructions.pop()?;
     // process the left hand of the `and`
@@ -310,30 +320,31 @@ pub fn compile_logical_op(op: &LogicalOp, mut sub_instructions: Vec<Vec<ProtoIns
     match *op {
         LogicalOp::And => {
             let right_label = labels.jump_to();
-            instructions.push(GotoIf(right_label.addr)); 
-            instructions.push(Goto(end.addr)); 
-            instructions.push(AddrLabel(right_label)); 
+            instructions.push(GotoIf(right_label.addr));
+            instructions.push(Goto(end.addr));
+            instructions.push(AddrLabel(right_label));
             instructions.extend(right_hand);
-            instructions.push(And); 
-
-        },
+            instructions.push(And);
+        }
         LogicalOp::Or => {
-            instructions.push(GotoIf(end.addr)); 
+            instructions.push(GotoIf(end.addr));
             instructions.extend(right_hand);
-            instructions.push(Or); 
-        },
+            instructions.push(Or);
+        }
     };
-    instructions.push(AddrLabel(end)); 
+    instructions.push(AddrLabel(end));
 
     Some(instructions)
 }
-
 
 /// Build the intructions needed to run a Assign BinaryOp
 /// So `id = <expr>` is compiled as:
 ///     <expr>
 ///     Assign(id)
-pub fn compile_assign(name: &str, mut sub_instructions: Vec<Vec<ProtoInstruction>>) -> Option<Vec<ProtoInstruction>> {
+pub fn compile_assign(
+    name: &str,
+    mut sub_instructions: Vec<Vec<ProtoInstruction>>,
+) -> Option<Vec<ProtoInstruction>> {
     let mut instructions = sub_instructions.pop()?;
     instructions.push(Store(name.into()));
     Some(instructions)
@@ -361,7 +372,10 @@ pub fn compile_assign(name: &str, mut sub_instructions: Vec<Vec<ProtoInstruction
 ///     Add
 ///     Store(id)
 ///     Load(id)
-pub fn compile_unary_op(op: &UnaryOp, mut sub_instructions: Vec<Vec<ProtoInstruction>>) -> Option<Vec<ProtoInstruction>> {
+pub fn compile_unary_op(
+    op: &UnaryOp,
+    mut sub_instructions: Vec<Vec<ProtoInstruction>>,
+) -> Option<Vec<ProtoInstruction>> {
     let mut operand_insts = sub_instructions.pop()?;
     let insts: Vec<ProtoInstruction> = match *op {
         UnaryOp::Minus => vec![ProtoInstruction::Minus],
@@ -378,7 +392,7 @@ pub fn compile_unary_op(op: &UnaryOp, mut sub_instructions: Vec<Vec<ProtoInstruc
                 ProtoInstruction::Store(id.clone()),
                 ProtoInstruction::Load(id.clone()),
             ]
-        },
+        }
         UnaryOp::PreDec => {
             let id = match &operand_insts[0] {
                 ProtoInstruction::Load(id) => id.clone(),
@@ -390,7 +404,7 @@ pub fn compile_unary_op(op: &UnaryOp, mut sub_instructions: Vec<Vec<ProtoInstruc
                 ProtoInstruction::Store(id.clone()),
                 ProtoInstruction::Load(id.clone()),
             ]
-        },
+        }
         UnaryOp::PostInc => {
             let id = match &operand_insts[0] {
                 ProtoInstruction::Load(id) => id.clone(),
@@ -402,7 +416,7 @@ pub fn compile_unary_op(op: &UnaryOp, mut sub_instructions: Vec<Vec<ProtoInstruc
                 ProtoInstruction::Add,
                 ProtoInstruction::Store(id.clone()),
             ]
-        },
+        }
         UnaryOp::PostDec => {
             let id = match &operand_insts[0] {
                 ProtoInstruction::Load(id) => id.clone(),
@@ -414,13 +428,13 @@ pub fn compile_unary_op(op: &UnaryOp, mut sub_instructions: Vec<Vec<ProtoInstruc
                 ProtoInstruction::Sub,
                 ProtoInstruction::Store(id.clone()),
             ]
-        },
+        }
     };
     operand_insts.extend(insts);
     Some(operand_insts)
 }
 
-/// Build the intructions needed to run WhileLoop
+/// Build the intructions needed to run a WhileLoop
 /// * So `while (<cond_expr>) { <block_expr>}` is compiled as:
 ///     NewLoopCtx
 ///     Label 'start_loop'
@@ -432,7 +446,10 @@ pub fn compile_unary_op(op: &UnaryOp, mut sub_instructions: Vec<Vec<ProtoInstruc
 ///     Goto 'start_loop'
 ///     Label 'end_loop'
 ///     DelLoopCtx
-pub fn compile_while(mut sub_instructions: Vec<Vec<ProtoInstruction>>, labels: &mut LabelGenerator) -> Option<Vec<ProtoInstruction>> {
+pub fn compile_while(
+    mut sub_instructions: Vec<Vec<ProtoInstruction>>,
+    labels: &mut LabelGenerator,
+) -> Option<Vec<ProtoInstruction>> {
     // build label
     let begin = labels.begin_loop();
     let block_label = labels.jump_to();
@@ -455,55 +472,121 @@ pub fn compile_while(mut sub_instructions: Vec<Vec<ProtoInstruction>>, labels: &
     Some(instructions)
 }
 
+/// Build the intructions needed to run a ForLoop
+/// * So `for (<init_exp>; <cond_expr>; <inc_exp>) { <block_expr>}` is compiled as:
+///     NewLoopCtx
+///     NewStack
+///     <init_expr>
+///     DelStack
+///     Label 'start_loop'
+///     <cond_expr>
+///     Not
+///     GotoIf 'end'
+///     Label 'block'
+///     <block_expr>
+///     NewStack
+///     <inc_exp>
+///     DelStack
+///     Goto 'start_loop'
+///     Label 'end_loop'
+///     DelLoopCtx
+pub fn compile_for_loop(
+    mut sub_instructions: Vec<Vec<ProtoInstruction>>,
+    labels: &mut LabelGenerator,
+) -> Option<Vec<ProtoInstruction>> {
+    // build label
+    let begin = labels.begin_loop();
+    let end = labels.end_loop();
+    // gather expressions
+    let block = sub_instructions.pop()?;
+    let inc = sub_instructions.pop()?;
+    let condition = sub_instructions.pop()?;
+    let init = sub_instructions.pop()?;
+    // build the instruction set
+    let mut instructions = Vec::new();
+    instructions.push(NewLoopCtx);
+    instructions.push(NewStack); // clean stack for init executions
+    instructions.extend(init);
+    instructions.push(DelStack); // clean any leftover values from the init expression
+    instructions.push(AddrLabel(begin));
+    instructions.extend(condition);
+    instructions.push(Not); // reverse condition, so GotoOf acts as "go to if not"
+    instructions.push(GotoIf(end.addr));
+    instructions.extend(block);
+    instructions.push(NewStack); // clean stack for increment executions
+    instructions.extend(inc);
+    instructions.push(DelStack); // clean any leftover values from the inc expression
+    instructions.push(Goto(begin.addr));
+    instructions.push(AddrLabel(end));
+    instructions.push(DelLoopCtx);
+    Some(instructions)
+}
+
 /// Build the intructions needed to run a BinaryOp expression
 /// see:
 /// * `compile_numerical_op`
 /// * `compile_comparison_op`
 /// * `compile_logical_op`
 /// for details
-pub fn compile_binary_op(op: &BinaryOp, sub_instructions: Vec<Vec<ProtoInstruction>>, labels: &mut LabelGenerator) -> Option<Vec<ProtoInstruction>> {
+pub fn compile_binary_op(
+    op: &BinaryOp,
+    sub_instructions: Vec<Vec<ProtoInstruction>>,
+    labels: &mut LabelGenerator,
+) -> Option<Vec<ProtoInstruction>> {
     match op {
         Numerical(num_op) => compile_numerical_op(num_op, sub_instructions),
         Comparison(comp_op) => compile_comparison_op(comp_op, sub_instructions),
         Logical(logical_op) => compile_logical_op(logical_op, sub_instructions, labels),
     }
 }
-    
+
 #[cfg(test)]
 mod test {
-    use std::str::FromStr;
     use crate::ast::Ast;
     use crate::compiler::compiler::Compiler;
-    use crate::compiler::proto_instructions::{ProtoValue,ProtoInstruction,Addr,AddrKind};
+    use crate::compiler::proto_instructions::{Addr, AddrKind, ProtoInstruction, ProtoValue};
+    use std::str::FromStr;
     use ProtoInstruction::*;
     use ProtoValue::*;
 
     #[test]
     fn test_if_instruction_set() {
-        let ast = Ast::from_str(r#"
+        let ast = Ast::from_str(
+            r#"
         if (true) {
           "true_block";
         } 
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
         assert_eq!(
             Compiler::preprocess(&ast.root).unwrap(),
             vec![
                 Val(Bool(true)),
                 GotoIf(0),
                 Goto(1),
-                AddrLabel(Addr { addr: 0, kind: AddrKind::Jump }),
+                AddrLabel(Addr {
+                    addr: 0,
+                    kind: AddrKind::Jump
+                }),
                 NewStack,
                 Val(Str("true_block".into())),
                 DelStack,
-                AddrLabel(Addr { addr: 1, kind: AddrKind::Jump }),
+                AddrLabel(Addr {
+                    addr: 1,
+                    kind: AddrKind::Jump
+                }),
             ],
-		);
-        let ast = Ast::from_str(r#"
+        );
+        let ast = Ast::from_str(
+            r#"
         if (true) {
           "true_block";
         } else {
           "false_block";
-        }"#).unwrap();
+        }"#,
+        )
+        .unwrap();
         assert_eq!(
             Compiler::preprocess(&ast.root).unwrap(),
             vec![
@@ -513,13 +596,19 @@ mod test {
                 Val(Str("false_block".into())),
                 DelStack,
                 Goto(1),
-                AddrLabel(Addr { addr: 0, kind: AddrKind::Jump }),
+                AddrLabel(Addr {
+                    addr: 0,
+                    kind: AddrKind::Jump
+                }),
                 NewStack,
                 Val(Str("true_block".into())),
                 DelStack,
-                AddrLabel(Addr { addr: 1, kind: AddrKind::Jump }),
+                AddrLabel(Addr {
+                    addr: 1,
+                    kind: AddrKind::Jump
+                }),
             ],
-		);
+        );
     }
 
     #[test]
@@ -527,9 +616,7 @@ mod test {
         let ast = Ast::from_str("let some_ref;").unwrap();
         assert_eq!(
             Compiler::preprocess(&ast.root).unwrap(),
-            vec![
-                NewRef("some_ref".into()),
-            ],
+            vec![NewRef("some_ref".into()),],
         );
         let ast = Ast::from_str("let some_ref = true;").unwrap();
         assert_eq!(
@@ -547,9 +634,7 @@ mod test {
         let ast = Ast::from_str("a;").unwrap();
         assert_eq!(
             Compiler::preprocess(&ast.root).unwrap(),
-            vec![
-                Load("a".into()),
-            ],
+            vec![Load("a".into()),],
         );
     }
     #[test]
@@ -586,21 +671,13 @@ mod test {
         let ast = Ast::from_str("foo(a)").unwrap();
         assert_eq!(
             Compiler::preprocess(&ast.root).unwrap(),
-            vec![
-                Load("a".into()),
-                PushToNext(1),
-                Load("foo".into()),
-                FnCall,
-            ],
+            vec![Load("a".into()), PushToNext(1), Load("foo".into()), FnCall,],
         );
         // test without args
         let ast = Ast::from_str("foo()").unwrap();
         assert_eq!(
             Compiler::preprocess(&ast.root).unwrap(),
-            vec![
-                Load("foo".into()),
-                FnCall,
-            ],
+            vec![Load("foo".into()), FnCall,],
         );
     }
     #[test]
@@ -609,16 +686,22 @@ mod test {
         assert_eq!(
             Compiler::preprocess(&ast.root).unwrap(),
             vec![
-                Goto(1),  // skip function block if we're not calling it
-                AddrLabel(Addr { addr: 0, kind: AddrKind::BeginFunction } ), // begin address
-                NewRef("a".into()), // first arg 
+                Goto(1), // skip function block if we're not calling it
+                AddrLabel(Addr {
+                    addr: 0,
+                    kind: AddrKind::BeginFunction
+                }), // begin address
+                NewRef("a".into()), // first arg
                 Store("a".into()),
                 NewRef("b".into()), // 2nd arg
                 Store("b".into()),
                 Val(Bool(true)), // function block
-                PushToNext(1),   
+                PushToNext(1),
                 FnRet,
-                AddrLabel(Addr { addr: 1, kind: AddrKind::EndFunction } ), // begin address
+                AddrLabel(Addr {
+                    addr: 1,
+                    kind: AddrKind::EndFunction
+                }), // begin address
                 NewFunction(0), // put function address into a `foo` var
                 NewRef("foo".into()),
                 Store("foo".into()),
@@ -629,16 +712,22 @@ mod test {
         assert_eq!(
             Compiler::preprocess(&ast.root).unwrap(),
             vec![
-                Goto(1),  // skip function block if we're not calling it
-                AddrLabel(Addr { addr: 0, kind: AddrKind::BeginFunction } ), // begin address
-                NewRef("a".into()), // first arg 
+                Goto(1), // skip function block if we're not calling it
+                AddrLabel(Addr {
+                    addr: 0,
+                    kind: AddrKind::BeginFunction
+                }), // begin address
+                NewRef("a".into()), // first arg
                 Store("a".into()),
                 NewRef("b".into()), // 2nd arg
                 Store("b".into()),
-                Val(Undefined),  // backup return call
+                Val(Undefined), // backup return call
                 PushToNext(1),
                 FnRet,
-                AddrLabel(Addr { addr: 1, kind: AddrKind::EndFunction } ), // begin address
+                AddrLabel(Addr {
+                    addr: 1,
+                    kind: AddrKind::EndFunction
+                }), // begin address
                 NewFunction(0), // put function address into a `foo` var
                 NewRef("foo".into()),
                 Store("foo".into()),
@@ -650,10 +739,7 @@ mod test {
         let ast = Ast::from_str("a = 2").unwrap();
         assert_eq!(
             Compiler::preprocess(&ast.root).unwrap(),
-            vec![
-                Val(Num(2.)),
-                Store("a".into()),
-            ],
+            vec![Val(Num(2.)), Store("a".into()),],
         );
     }
     #[test]
@@ -661,11 +747,7 @@ mod test {
         let ast = Ast::from_str("1 + 2").unwrap();
         assert_eq!(
             Compiler::preprocess(&ast.root).unwrap(),
-            vec![
-                Val(Num(2.)),
-                Val(Num(1.)),
-                Add,
-            ],
+            vec![Val(Num(2.)), Val(Num(1.)), Add,],
         );
     }
     #[test]
@@ -673,11 +755,7 @@ mod test {
         let ast = Ast::from_str("1 <= 2").unwrap();
         assert_eq!(
             Compiler::preprocess(&ast.root).unwrap(),
-            vec![
-                Val(Num(2.)),
-                Val(Num(1.)),
-                LessThanOrEqual
-            ],
+            vec![Val(Num(2.)), Val(Num(1.)), LessThanOrEqual],
         );
     }
     #[test]
@@ -689,11 +767,17 @@ mod test {
             vec![
                 Val(Bool(true)),
                 GotoIf(1), // success path
-                Goto(0), // failure path
-                AddrLabel(Addr { addr: 1, kind: AddrKind::Jump }),
+                Goto(0),   // failure path
+                AddrLabel(Addr {
+                    addr: 1,
+                    kind: AddrKind::Jump
+                }),
                 Val(Bool(false)),
                 And,
-                AddrLabel(Addr { addr: 0, kind: AddrKind::Jump }),
+                AddrLabel(Addr {
+                    addr: 0,
+                    kind: AddrKind::Jump
+                }),
             ],
         );
         // test OR
@@ -705,7 +789,10 @@ mod test {
                 GotoIf(0), // success path
                 Val(Bool(false)),
                 Or,
-                AddrLabel(Addr { addr: 0, kind: AddrKind::Jump }),
+                AddrLabel(Addr {
+                    addr: 0,
+                    kind: AddrKind::Jump
+                }),
             ],
         );
     }
@@ -714,26 +801,17 @@ mod test {
         let ast = Ast::from_str("!true").unwrap();
         assert_eq!(
             Compiler::preprocess(&ast.root).unwrap(),
-            vec![
-                Val(Bool(true)),
-                Not,
-            ],
+            vec![Val(Bool(true)), Not,],
         );
         let ast = Ast::from_str("+1").unwrap();
         assert_eq!(
             Compiler::preprocess(&ast.root).unwrap(),
-            vec![
-                Val(Num(1.)),
-                Plus,
-            ],
+            vec![Val(Num(1.)), Plus,],
         );
         let ast = Ast::from_str("-1").unwrap();
         assert_eq!(
             Compiler::preprocess(&ast.root).unwrap(),
-            vec![
-                Val(Num(1.)),
-                Minus,
-            ],
+            vec![Val(Num(1.)), Minus,],
         );
         // test pre increment operator
         let ast = Ast::from_str("++a").unwrap();
@@ -791,13 +869,19 @@ mod test {
             Compiler::preprocess(&ast.root).unwrap(),
             vec![
                 NewLoopCtx,
-                AddrLabel(Addr { addr: 0, kind: AddrKind::BeginLoop }), // begin
+                AddrLabel(Addr {
+                    addr: 0,
+                    kind: AddrKind::BeginLoop
+                }), // begin
                 Val(Num(2.)),
                 Load("a".into()),
                 LessThan,
                 GotoIf(1),
                 Goto(2),
-                AddrLabel(Addr { addr: 1, kind: AddrKind::Jump }), // block 
+                AddrLabel(Addr {
+                    addr: 1,
+                    kind: AddrKind::Jump
+                }), // block
                 NewStack,
                 Val(Num(1.)),
                 Load("a".into()),
@@ -805,10 +889,55 @@ mod test {
                 Store("a".into()),
                 DelStack,
                 Goto(0),
-                AddrLabel(Addr { addr: 2, kind: AddrKind::EndLoop }), // block 
+                AddrLabel(Addr {
+                    addr: 2,
+                    kind: AddrKind::EndLoop
+                }), // block
+                DelLoopCtx,
+            ],
+        );
+    }
+    #[test]
+    fn test_for_loop_instruction_set() {
+        let ast = Ast::from_str("for(i = 0; i < 2; i++) { a = a + 1; }").unwrap();
+        assert_eq!(
+            Compiler::preprocess(&ast.root).unwrap(),
+            vec![
+                NewLoopCtx,
+                NewStack,
+                Val(Num(0.)), // init
+                Store("i".into()),
+                DelStack,
+                AddrLabel(Addr {
+                    addr: 0,
+                    kind: AddrKind::BeginLoop
+                }), // condition
+                Val(Num(2.)),
+                Load("i".into()),
+                LessThan,
+                Not,
+                GotoIf(1),
+                NewStack,
+                Val(Num(1.)),
+                Load("a".into()),
+                Add,
+                Store("a".into()),
+                DelStack,
+                // inc
+                NewStack,
+                Load("i".into()),
+                Load("i".into()),
+                Val(Num(1.)),
+                Add,
+                Store("i".into()),
+                DelStack,
+                Goto(0),
+                AddrLabel(Addr {
+                    addr: 1,
+                    kind: AddrKind::EndLoop
+                }), // block
                 DelLoopCtx,
             ],
         );
     }
 }
-

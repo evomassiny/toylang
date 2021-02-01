@@ -62,7 +62,7 @@ pub fn lex(src: &str) -> Result<Vec<Token>, Box<dyn Error>> {
         static ref BOOLEAN_PATTERN: Regex = Regex::new(r"^(?P<token>true|false)").unwrap();
         static ref KEYWORD_PATTERN: Regex = Regex::new(
             // (\W|$) ensure that the keyword is not followed by any alphanumeric char
-            r"^(?P<token>function|if|let|else|return|while|undefined|null|break|continue|var)(\W|$)"
+            r"^(?P<token>function|if|let|else|return|while|for|undefined|null|break|continue|var)(\W|$)"
         ).unwrap();
         static ref NUMERIC_PATTERN: Regex = Regex::new(
             // (\W|$) ensure that the float is not followed by any alphanumeric char
@@ -156,6 +156,7 @@ pub fn lex(src: &str) -> Result<Vec<Token>, Box<dyn Error>> {
                 "return" => Return,
                 "else" => Else,
                 "while" => While,
+                "for" => For,
                 "break" => Break,
                 "continue" => Continue,
                 kw => {
@@ -316,6 +317,11 @@ mod test {
         assert_eq!(
             r[0].kind,
             Keyword(While)
+        );
+        let r = lex("for").expect("failed to parse keyword.");
+        assert_eq!(
+            r[0].kind,
+            Keyword(For)
         );
         let r = lex("forage").expect("failed to parse keyword.");
         assert_eq!(

@@ -512,6 +512,70 @@ pub fn match_while(tokens: &[Option<&Token>]) -> Option<(FlatExp, Vec<usize>)> {
 }
 
 /// match (starting from the 1st token):
+/// * `for (expression; expression; expression) {block}`
+pub fn match_for_loop(tokens: &[Option<&Token>]) -> Option<(FlatExp, Vec<usize>)> {
+    if tokens.len() < 4 { return None; }
+    let mut consumed_tokens = vec![];
+    // match `while`
+    match tokens[0] {
+        Some(&Token { kind: Keyword(For), ..}) => consumed_tokens.push(0),
+        _ => return None,
+    }
+    // match `(`
+    match tokens[1] {
+        Some(&Token { kind: Separator(OpenParen), ..}) => consumed_tokens.push(1),
+        _ => return None,
+    }
+    // iter until match `;`
+    let mut i = 2;
+    while i < tokens.len() {
+        match tokens[i] {
+            Some(&Token { kind: Separator(Semicolon), ..}) => {
+                consumed_tokens.push(i);
+                break;
+            },
+            _ => i += 1,
+        }
+    }
+    // iter until match `;`
+    i += 1;
+    while i < tokens.len() {
+        match tokens[i] {
+            Some(&Token { kind: Separator(Semicolon), ..}) => {
+                consumed_tokens.push(i);
+                break;
+            },
+            _ => i += 1,
+        }
+    }
+
+    // iter until match `)`
+    i += 1;
+    let mut paren_count = 1;
+    while i < tokens.len() {
+        match tokens[i] {
+            Some(&Token { kind: Separator(CloseParen), ..}) => {
+                paren_count -= 1;
+                if paren_count == 0 {
+                    consumed_tokens.push(i);
+                    break;
+                }
+            },
+            Some(&Token { kind: Separator(OpenParen), ..}) => paren_count += 1,
+            None => return None,
+            _ => {},
+        }
+        i += 1;
+    }
+    // match {group}
+    i += 1; 
+    if i >= tokens.len() {
+        return None;
+    }
+    let _ = consume_block(&tokens[i..])?; // go at CloseBlock
+    Some((FlatForLoop, consumed_tokens))
+}
+/// match (starting from the 1st token):
 /// `fn identifier( {block}`
 pub fn match_function_declaration(tokens: &[Option<&Token>]) -> Option<(FlatExp, Vec<usize>)> {
     if tokens.len() < 6 { return None; }
@@ -771,7 +835,7 @@ mod test {
         assert_eq!(
             patterns::match_while(&unparsed_tokens),
             None,
-            "Should hanve not parsed this while loop"
+            "Should have not parsed this while loop"
         );
         // test invalid while
         let tokens = lex("while ( a ").unwrap();
@@ -779,7 +843,23 @@ mod test {
         assert_eq!(
             patterns::match_while(&unparsed_tokens),
             None,
-            "Should hanve not parsed this while loop"
+            "Should have not parsed this while loop"
+        );
+    }
+
+    #[test]
+    fn match_for_loop_pattern() {
+        // test simple while
+        let tokens = lex(r#"
+        for ( i = 0; i < 10; i++ ) {
+            a = a + i;
+        }
+        "#).unwrap();
+        let unparsed_tokens: Vec<Option<&Token>> = tokens.iter().map(|t| Some(t)).collect();
+        assert_eq!(
+            patterns::match_for_loop(&unparsed_tokens),
+            Some((FlatExp::FlatForLoop, vec![0_usize, 1, 5, 9, 12])),
+            "Failed to match for pattern"
         );
     }
 

@@ -5,13 +5,8 @@ function fib(n) {
     return fib(n - 1) + fib(n - 2);
 }
 
-let i = 0;
 let result = undefined;
-while (true) {
+for (let i = 0; i < 30; i++) {
     result = fib(i);
-
-    if (++i >= 30) {
-        break;
-    }
 }
 result

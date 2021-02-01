@@ -28,6 +28,14 @@ pub enum Expr {
     /// the conditional expression resolves to true
     /// consumes 2 expressions => the condition, the block
     WhileLoop(Box<Expr>, Box<Expr>),
+    /// Repeatedly run an expression while 
+    /// the conditional expression resolves to true
+    /// consumes 4 expressions:
+    /// * the initializer,
+    /// * the condition,
+    /// * the increment,
+    /// * the block
+    ForLoop(Box<Expr>, Box<Expr>, Box<Expr>, Box<Expr>),
     /// Load a value from a reference (eg a variable name)
     Local(String),
     /// Store a value into a reference (eg a variable name)
@@ -58,6 +66,7 @@ impl Expr {
             Block(exprs) => exprs.len(),
             Call(_id, exprs) => exprs.len() + 1,
             WhileLoop(..) => 2,
+            ForLoop(..) => 4,
             Local(_) => 0,
             Assign(..) => 1,
             If(_cond, _true_block, false_block) => {
@@ -67,6 +76,27 @@ impl Expr {
             Return(e) => if e.is_some() { 1 } else { 0 },
             LetDecl(_, e) => if e.is_some() { 1 } else { 0 },
             Break | Continue => 0,
+        }
+    }
+
+    /// returns either or this expression should return a value.
+    pub fn has_return_value(&self) -> bool {
+        use Expr::*;
+        match self {
+            BinaryOp(..) => true,
+            UnaryOp(..) => true,
+            Literal(..) => true,
+            Block(..) => false,
+            Call(..) => true,
+            WhileLoop(..) => false,
+            ForLoop(..) => false,
+            Local(..) => false,
+            Assign(..) => true,
+            If(..) => false,
+            FunctionDecl(..) => true,
+            Return(..) => true,
+            LetDecl(..) => false,
+            Break | Continue => false,
         }
     }
 
@@ -106,6 +136,15 @@ impl Expr {
                 match idx {
                     0 => Some(cond.as_ref()),
                     1 => Some(block.as_ref()),
+                    _ => None
+                }
+            },
+            ForLoop(init, cond, inc, block) => {
+                match idx {
+                    0 => Some(init.as_ref()),
+                    1 => Some(cond.as_ref()),
+                    2 => Some(inc.as_ref()),
+                    3 => Some(block.as_ref()),
                     _ => None
                 }
             },
@@ -212,6 +251,19 @@ impl Ast {
                     let cond_exp = Box::new(exp_stack.pop()?);
                     let run_block = Box::new(exp_stack.pop()?);
                     exp_stack.push(WhileLoop(cond_exp, run_block));
+                },
+                // Collect the 
+                // * init expression,
+                // * the condition expression,
+                // * increment expression
+                // * the loop block,
+                // then push a ForLoop
+                FlatForLoop => {
+                    let init_exp = Box::new(exp_stack.pop()?);
+                    let cond_exp = Box::new(exp_stack.pop()?);
+                    let inc_exp = Box::new(exp_stack.pop()?);
+                    let run_block = Box::new(exp_stack.pop()?);
+                    exp_stack.push(ForLoop(init_exp, cond_exp, inc_exp, run_block));
                 },
                 // push a Local
                 FlatLocal(name) => exp_stack.push(Local(name)),
